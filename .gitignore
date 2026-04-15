@@ -1,0 +1,8 @@
+debug-*.js
+coverage
+dist
+node_modules
+playwright-report
+release
+test-results
+tests/.generated

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "outDir": "dist/main",
+    "rootDir": "src",
+    "sourceMap": true,
+    "types": ["node", "electron"]
+  },
+  "include": ["src/main/**/*.ts", "src/shared/**/*.ts", "tests/**/*.d.ts"]
+}

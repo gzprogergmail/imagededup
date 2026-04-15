@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ImageDedup</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Local Duplicate Detection</p>
+        <h1>ImageDedup</h1>
+        <p class="lede">
+          Fast pass uses `imghash` perceptual hashes across 0/90/180/270 rotation. Slow pass uses
+          `ssim.js` over normalized rotated and cropped variants for transformed near-duplicates from
+          the same source.
+        </p>
+      </section>
+
+      <section class="controls">
+        <label class="field">
+          <span>Folder</span>
+          <input id="folder-input" placeholder="C:\images\dataset" type="text" />
+        </label>
+        <div class="actions">
+          <button id="browse-button" type="button">Browse</button>
+          <button id="fast-button" type="button">Start Fast Pass</button>
+          <button id="slow-button" type="button">Start Slow Pass</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" id="summary-grid"></section>
+      <section class="status" id="status-line">Pick a folder and start a pass.</section>
+      <section class="results" id="results-panel"></section>
+    </main>
+    <script src="./app.ts" type="module"></script>
+  </body>
+</html>

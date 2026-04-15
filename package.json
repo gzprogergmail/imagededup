@@ -1,0 +1,68 @@
+{
+  "name": "imagededup",
+  "version": "1.0.0",
+  "description": "Electron desktop app for image duplicate detection with fast and slow passes.",
+  "main": "dist/main/main/main.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "coverage:check": "node scripts/check-coverage.mjs",
+    "e2e:fixtures": "node scripts/generate-test-images.mjs tests/.generated/e2e",
+    "lint": "eslint .",
+    "package": "npm run build && electron-builder --dir",
+    "perf": "vitest run --config vitest.performance.config.ts",
+    "start": "npm run build && electron .",
+    "test": "npm run lint && npm run test:unit && npm run test:e2e && npm run perf && npm run coverage:check",
+    "test:e2e": "npm run build && npm run e2e:fixtures && playwright test",
+    "test:unit": "vitest run --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.local.imagededup",
+    "productName": "ImageDedup",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": "dir"
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.59.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "c8": "^11.0.0",
+    "concurrently": "^9.2.1",
+    "electron": "^30.5.1",
+    "electron-builder": "^26.8.1",
+    "eslint": "^10.2.0",
+    "jsdom": "^29.0.2",
+    "playwright": "^1.59.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4",
+    "wait-on": "^9.0.5"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.3",
+    "imghash": "^1.1.0",
+    "sharp": "^0.34.4",
+    "ssim.js": "^3.5.0",
+    "zod": "^4.1.12"
+  }
+}
