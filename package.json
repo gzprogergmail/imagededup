@@ -59,6 +59,7 @@
     "wait-on": "^9.0.5"
   },
   "dependencies": {
+    "@awesome.me/webawesome": "^3.5.0",
     "fast-glob": "^3.3.3",
     "imghash": "^1.1.0",
     "sharp": "^0.34.4",

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { escapeHtml, renderGroupMarkup, renderSummaryMarkup } from "../../src/renderer/view";
+import {
+  escapeHtml,
+  renderErrorMarkup,
+  renderGroupMarkup,
+  renderResultsMarkup,
+  renderSummaryMarkup
+} from "../../src/renderer/view";
 import type { DetectionResult } from "../../src/shared/types";
 
 const result: DetectionResult = {
@@ -36,5 +42,16 @@ describe("renderer view", () => {
     const markup = renderGroupMarkup(result.groups[0]!);
     expect(markup).toContain("score 0.91");
     expect(markup).toContain("hash deadbeef");
+  });
+
+  it("renders an empty-state result card", () => {
+    const markup = renderResultsMarkup({ ...result, groups: [] });
+    expect(markup).toContain("No duplicate groups were found.");
+  });
+
+  it("renders an error result card", () => {
+    const markup = renderErrorMarkup("Folder does not exist.");
+    expect(markup).toContain("Pass failed");
+    expect(markup).toContain("Folder does not exist.");
   });
 });

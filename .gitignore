@@ -1,8 +1,12 @@
 debug-*.js
 coverage
 dist
+electron_err.log
+electron_out.log
+logs
 node_modules
 playwright-report
 release
+run.log
 test-results
 tests/.generated

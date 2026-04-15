@@ -8,32 +8,64 @@
   </head>
   <body>
     <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Local Duplicate Detection</p>
-        <h1>ImageDedup</h1>
-        <p class="lede">
+      <section class="hero hero-panel">
+        <div>
+          <p class="eyebrow">Local Duplicate Detection</p>
+          <h1>ImageDedup</h1>
+          <p class="lede">
           Fast pass uses `imghash` perceptual hashes across 0/90/180/270 rotation. Slow pass uses
           `ssim.js` over normalized rotated and cropped variants for transformed near-duplicates from
           the same source.
-        </p>
-      </section>
-
-      <section class="controls">
-        <label class="field">
-          <span>Folder</span>
-          <input id="folder-input" placeholder="C:\images\dataset" type="text" />
-        </label>
-        <div class="actions">
-          <button id="browse-button" type="button">Browse</button>
-          <button id="fast-button" type="button">Start Fast Pass</button>
-          <button id="slow-button" type="button">Start Slow Pass</button>
+          </p>
+        </div>
+        <div class="hero-meta">
+          <wa-badge appearance="filled" variant="brand" id="status-badge">Idle</wa-badge>
+          <p class="hero-hint" id="log-path-line">JSONL logs will be written after the app starts.</p>
         </div>
       </section>
 
+      <section class="workspace">
+        <wa-card class="controls-card">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Scan Controls</p>
+              <h2>Run a pass and keep the session observable</h2>
+            </div>
+            <wa-badge appearance="outlined" variant="neutral">Local filesystem only</wa-badge>
+          </div>
+          <label class="field">
+            <span>Folder</span>
+            <input id="folder-input" placeholder="C:\images\dataset" type="text" />
+          </label>
+          <div class="actions">
+            <button id="browse-button" type="button">Browse</button>
+            <button id="fast-button" type="button">Start Fast Pass</button>
+            <button id="slow-button" type="button">Start Slow Pass</button>
+          </div>
+          <div class="progress-wrap">
+            <wa-progress-bar class="progress-bar" id="progress-bar" indeterminate></wa-progress-bar>
+          </div>
+          <wa-callout class="status status-idle" id="status-line" variant="neutral">
+            Pick a folder and start a pass.
+          </wa-callout>
+        </wa-card>
+
+        <wa-card class="activity-card">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Activity</p>
+              <h2>Recent UI events</h2>
+            </div>
+            <wa-badge appearance="outlined" variant="brand" id="activity-count">0</wa-badge>
+          </div>
+          <ol class="activity-list" id="activity-list"></ol>
+        </wa-card>
+      </section>
+
       <section class="summary-grid" id="summary-grid"></section>
-      <section class="status" id="status-line">Pick a folder and start a pass.</section>
       <section class="results" id="results-panel"></section>
     </main>
+    <script src="./ui.ts" type="module"></script>
     <script src="./app.ts" type="module"></script>
   </body>
 </html>
