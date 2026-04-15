@@ -10,3 +10,4 @@ release
 run.log
 test-results
 tests/.generated
+*.png

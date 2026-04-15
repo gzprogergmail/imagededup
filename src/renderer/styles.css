@@ -62,9 +62,21 @@ body {
 
 .hero-meta {
   min-width: 260px;
+  max-width: min(100%, 320px);
   display: grid;
   gap: 12px;
   justify-items: end;
+  justify-self: end;
+}
+
+.hero-meta > * {
+  max-width: 100%;
+}
+
+.hero-hint {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .eyebrow {
@@ -251,6 +263,7 @@ wa-callout.status::part(base) {
   display: block;
   margin-top: 4px;
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .summary-grid {
@@ -302,6 +315,7 @@ wa-callout.status::part(base) {
   padding-left: 18px;
   display: grid;
   gap: 6px;
+  overflow-wrap: anywhere;
 }
 
 .pill {

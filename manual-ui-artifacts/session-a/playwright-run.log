@@ -1,0 +1,8 @@
+2026-04-15T02:34:36.610Z launching
+2026-04-15T02:34:37.738Z launched
+2026-04-15T02:34:37.738Z got-window
+2026-04-15T02:34:37.837Z loaded
+2026-04-15T02:34:37.893Z filled
+2026-04-15T02:34:37.955Z clicked-fast
+2026-04-15T02:35:07.975Z error page.waitForFunction: Timeout 30000ms exceeded.
+    at [stdin]:21:14
