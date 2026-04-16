@@ -4,18 +4,34 @@ import ssim from "ssim.js";
 import { UnionFind } from "../../shared/unionFind";
 import type { DetectionResult, DuplicateGroup, ImageRecord } from "../../shared/types";
 
-const ROTATION_ANGLES = [-12, 0, 12] as const;
+const ROTATION_ANGLES = [0, -12, 12] as const;
 const CROP_FACTORS = [1, 0.85, 0.75] as const;
+const EARLY_EXIT_THRESHOLD = 0.97;
+const HASH_DIMENSION = 16;
+const HASH_DISTANCE_THRESHOLD = 64;
 const MATCH_THRESHOLD = 0.72;
 const STAGING_SIZE = 192;
 const TARGET_WIDTH = 128;
 const TARGET_HEIGHT = 128;
+const HASH_TRANSFORMS = [
+  { flipped: false, rotation: 0 },
+  { flipped: false, rotation: -12 },
+  { flipped: false, rotation: 12 },
+  { flipped: true, rotation: 0 },
+  { flipped: true, rotation: -12 },
+  { flipped: true, rotation: 12 }
+] as const;
 
 interface ImageVariant {
   data: Uint8ClampedArray;
   height: number;
   key: string;
   width: number;
+}
+
+interface CandidateSignature {
+  bits: Uint8Array;
+  key: string;
 }
 
 interface SimilarityScore {
@@ -25,26 +41,35 @@ interface SimilarityScore {
 
 export async function runSlowPass(files: ImageRecord[]): Promise<DetectionResult> {
   const startedAt = performance.now();
-  const variants = await Promise.all(files.map(async (file) => ({
+  const signatures = await Promise.all(files.map(async (file) => ({
     file,
-    variants: await loadVariants(file.path)
+    signatures: await loadCandidateSignatures(file.path)
   })));
   const unionFind = new UnionFind();
   const evidence = new Map<string, SimilarityScore>();
+  const variantCache = new Map<string, Promise<ImageVariant[]>>();
 
   for (const file of files) {
     unionFind.add(file.path);
   }
 
-  for (let leftIndex = 0; leftIndex < variants.length; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < variants.length; rightIndex += 1) {
-      const left = variants[leftIndex];
-      const right = variants[rightIndex];
+  for (let leftIndex = 0; leftIndex < signatures.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < signatures.length; rightIndex += 1) {
+      const left = signatures[leftIndex];
+      const right = signatures[rightIndex];
       if (!left || !right) {
         continue;
       }
 
-      const score = compareVariants(left.variants, right.variants);
+      if (!isCandidatePair(left.signatures, right.signatures)) {
+        continue;
+      }
+
+      const [leftVariants, rightVariants] = await Promise.all([
+        getVariants(left.file.path, variantCache),
+        getVariants(right.file.path, variantCache)
+      ]);
+      const score = compareVariants(leftVariants, rightVariants);
       if (!score || score.score < MATCH_THRESHOLD) {
         continue;
       }
@@ -65,6 +90,39 @@ export async function runSlowPass(files: ImageRecord[]): Promise<DetectionResult
     scannedFileCount: files.length,
     warnings: []
   };
+}
+
+async function getVariants(
+  filePath: string,
+  cache: Map<string, Promise<ImageVariant[]>>
+): Promise<ImageVariant[]> {
+  const cached = cache.get(filePath);
+  if (cached) {
+    return cached;
+  }
+
+  const next = loadVariants(filePath);
+  cache.set(filePath, next);
+  return next;
+}
+
+async function loadCandidateSignatures(filePath: string): Promise<CandidateSignature[]> {
+  return Promise.all(HASH_TRANSFORMS.map(async ({ flipped, rotation }) => {
+    const pipeline = sharp(filePath)
+      .rotate(rotation, { background: "#fbf7ef" })
+      .normalise()
+      .resize(HASH_DIMENSION, HASH_DIMENSION, { background: "#fbf7ef", fit: "contain" })
+      .grayscale();
+
+    const transformed = flipped ? pipeline.flop() : pipeline;
+    const data = await transformed.raw().toBuffer();
+    const average = data.reduce((sum, value) => sum + value, 0) / data.length;
+
+    return {
+      bits: Uint8Array.from(data, (value) => (value >= average ? 1 : 0)),
+      key: `${rotation}:${flipped ? "flipped" : "plain"}`
+    };
+  }));
 }
 
 async function loadVariants(filePath: string): Promise<ImageVariant[]> {
@@ -105,6 +163,37 @@ async function loadVariants(filePath: string): Promise<ImageVariant[]> {
   return variants.flat();
 }
 
+function isCandidatePair(left: CandidateSignature[], right: CandidateSignature[]): boolean {
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const leftSignature of left) {
+    for (const rightSignature of right) {
+      const distance = hammingDistance(leftSignature.bits, rightSignature.bits);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+      }
+
+      if (bestDistance <= HASH_DISTANCE_THRESHOLD) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function hammingDistance(left: Uint8Array, right: Uint8Array): number {
+  let distance = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      distance += 1;
+    }
+  }
+
+  return distance;
+}
+
 function compareVariants(left: ImageVariant[], right: ImageVariant[]): SimilarityScore | null {
   let bestScore = 0;
   let bestKey = "";
@@ -117,8 +206,11 @@ function compareVariants(left: ImageVariant[], right: ImageVariant[]): Similarit
         bestKey = `${leftVariant.key} x ${rightVariant.key}`;
       }
 
-      if (bestScore > 0.97) {
-        break;
+      if (bestScore > EARLY_EXIT_THRESHOLD) {
+        return {
+          evidence: `best SSIM ${bestScore.toFixed(4)} at ${bestKey}`,
+          score: Number(bestScore.toFixed(4))
+        };
       }
     }
   }

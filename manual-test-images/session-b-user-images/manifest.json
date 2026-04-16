@@ -1,0 +1,170 @@
+[
+  {
+    "filename": "cosmic_black_hole_jet__original.png",
+    "width": 474,
+    "height": 264,
+    "source": "OIP.webp",
+    "variant": "original"
+  },
+  {
+    "filename": "cosmic_black_hole_jet__rotated_17deg.png",
+    "width": 530,
+    "height": 391,
+    "source": "OIP.webp",
+    "variant": "rotated_17deg"
+  },
+  {
+    "filename": "cosmic_black_hole_jet__resized_68pct.png",
+    "width": 322,
+    "height": 180,
+    "source": "OIP.webp",
+    "variant": "resized_68pct"
+  },
+  {
+    "filename": "cosmic_black_hole_jet__affine_distorted.png",
+    "width": 522,
+    "height": 321,
+    "source": "OIP.webp",
+    "variant": "affine_distorted"
+  },
+  {
+    "filename": "cosmic_black_hole_jet__grayscale.png",
+    "width": 474,
+    "height": 264,
+    "source": "OIP.webp",
+    "variant": "grayscale"
+  },
+  {
+    "filename": "cosmic_black_hole_jet__flipped_horizontal.png",
+    "width": 474,
+    "height": 264,
+    "source": "OIP.webp",
+    "variant": "flipped_horizontal"
+  },
+  {
+    "filename": "grinning_mask_crowd__original.png",
+    "width": 182,
+    "height": 182,
+    "source": "OIP (1).webp",
+    "variant": "original"
+  },
+  {
+    "filename": "grinning_mask_crowd__rotated_17deg.png",
+    "width": 227,
+    "height": 227,
+    "source": "OIP (1).webp",
+    "variant": "rotated_17deg"
+  },
+  {
+    "filename": "grinning_mask_crowd__resized_68pct.png",
+    "width": 124,
+    "height": 124,
+    "source": "OIP (1).webp",
+    "variant": "resized_68pct"
+  },
+  {
+    "filename": "grinning_mask_crowd__affine_distorted.png",
+    "width": 215,
+    "height": 204,
+    "source": "OIP (1).webp",
+    "variant": "affine_distorted"
+  },
+  {
+    "filename": "grinning_mask_crowd__grayscale.png",
+    "width": 182,
+    "height": 182,
+    "source": "OIP (1).webp",
+    "variant": "grayscale"
+  },
+  {
+    "filename": "grinning_mask_crowd__flipped_horizontal.png",
+    "width": 182,
+    "height": 182,
+    "source": "OIP (1).webp",
+    "variant": "flipped_horizontal"
+  },
+  {
+    "filename": "moonface_valley_small__original.png",
+    "width": 320,
+    "height": 320,
+    "source": "OIP (2).webp",
+    "variant": "original"
+  },
+  {
+    "filename": "moonface_valley_small__rotated_17deg.png",
+    "width": 400,
+    "height": 400,
+    "source": "OIP (2).webp",
+    "variant": "rotated_17deg"
+  },
+  {
+    "filename": "moonface_valley_small__resized_68pct.png",
+    "width": 218,
+    "height": 218,
+    "source": "OIP (2).webp",
+    "variant": "resized_68pct"
+  },
+  {
+    "filename": "moonface_valley_small__affine_distorted.png",
+    "width": 378,
+    "height": 358,
+    "source": "OIP (2).webp",
+    "variant": "affine_distorted"
+  },
+  {
+    "filename": "moonface_valley_small__grayscale.png",
+    "width": 320,
+    "height": 320,
+    "source": "OIP (2).webp",
+    "variant": "grayscale"
+  },
+  {
+    "filename": "moonface_valley_small__flipped_horizontal.png",
+    "width": 320,
+    "height": 320,
+    "source": "OIP (2).webp",
+    "variant": "flipped_horizontal"
+  },
+  {
+    "filename": "moonface_valley_large__original.png",
+    "width": 1024,
+    "height": 1024,
+    "source": "the-most-random-image-every-seen-in-the-history-of-the-v0-iuzrc59aw2sb1.webp",
+    "variant": "original"
+  },
+  {
+    "filename": "moonface_valley_large__rotated_17deg.png",
+    "width": 1279,
+    "height": 1279,
+    "source": "the-most-random-image-every-seen-in-the-history-of-the-v0-iuzrc59aw2sb1.webp",
+    "variant": "rotated_17deg"
+  },
+  {
+    "filename": "moonface_valley_large__resized_68pct.png",
+    "width": 696,
+    "height": 696,
+    "source": "the-most-random-image-every-seen-in-the-history-of-the-v0-iuzrc59aw2sb1.webp",
+    "variant": "resized_68pct"
+  },
+  {
+    "filename": "moonface_valley_large__affine_distorted.png",
+    "width": 1208,
+    "height": 1147,
+    "source": "the-most-random-image-every-seen-in-the-history-of-the-v0-iuzrc59aw2sb1.webp",
+    "variant": "affine_distorted"
+  },
+  {
+    "filename": "moonface_valley_large__grayscale.png",
+    "width": 1024,
+    "height": 1024,
+    "source": "the-most-random-image-every-seen-in-the-history-of-the-v0-iuzrc59aw2sb1.webp",
+    "variant": "grayscale"
+  },
+  {
+    "filename": "moonface_valley_large__flipped_horizontal.png",
+    "width": 1024,
+    "height": 1024,
+    "source": "the-most-random-image-every-seen-in-the-history-of-the-v0-iuzrc59aw2sb1.webp",
+    "variant": "flipped_horizontal"
+  }
+]
