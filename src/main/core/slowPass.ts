@@ -39,27 +39,57 @@ interface SimilarityScore {
   score: number;
 }
 
-export async function runSlowPass(files: ImageRecord[]): Promise<DetectionResult> {
+export interface SlowPassCallbacks {
+  isCancelled?: () => boolean;
+  onComparison?: (completed: number) => void;
+  onComparisonStart?: (totalComparisons: number) => void;
+  onSignature?: (filePath: string) => void;
+}
+
+export async function runSlowPass(
+  files: ImageRecord[],
+  callbacks: SlowPassCallbacks = {}
+): Promise<DetectionResult> {
   const startedAt = performance.now();
-  const signatures = await Promise.all(files.map(async (file) => ({
-    file,
-    signatures: await loadCandidateSignatures(file.path)
-  })));
+  const signatures = await Promise.all(files.map(async (file) => {
+    const nextSignatures = await loadCandidateSignatures(file.path);
+    callbacks.onSignature?.(file.path);
+    return {
+      file,
+      signatures: nextSignatures
+    };
+  }));
+
   const unionFind = new UnionFind();
   const evidence = new Map<string, SimilarityScore>();
   const variantCache = new Map<string, Promise<ImageVariant[]>>();
+  const totalComparisons = (files.length * (files.length - 1)) / 2;
+  let comparisonsDone = 0;
+
+  callbacks.onComparisonStart?.(totalComparisons);
 
   for (const file of files) {
     unionFind.add(file.path);
   }
 
   for (let leftIndex = 0; leftIndex < signatures.length; leftIndex += 1) {
+    if (callbacks.isCancelled?.()) {
+      break;
+    }
+
     for (let rightIndex = leftIndex + 1; rightIndex < signatures.length; rightIndex += 1) {
+      if (callbacks.isCancelled?.()) {
+        break;
+      }
+
       const left = signatures[leftIndex];
       const right = signatures[rightIndex];
       if (!left || !right) {
         continue;
       }
+
+      comparisonsDone += 1;
+      callbacks.onComparison?.(comparisonsDone);
 
       if (!isCandidatePair(left.signatures, right.signatures)) {
         continue;

@@ -20,8 +20,15 @@ test("fast and slow pass run end-to-end in the built renderer", async ({ page })
       ({ fastResult: nextFastResult, slowResult: nextSlowResult }) => {
         (window as Window & { imageDedupApi: unknown }).imageDedupApi = {
           browseFolder: async () => "",
+          cancelScan: async () => undefined,
+          getFolderPreview: async (folder: string) => ({
+            folder,
+            imageCount: 2,
+            samplePaths: ["C:\\fixtures\\base.png", "C:\\fixtures\\copy.png"]
+          }),
           getLogInfo: async () => ({ directory: "C:\\logs" }),
           logEvent: async () => undefined,
+          onScanUpdate: undefined,
           startFastPass: async () => nextFastResult,
           startSlowPass: async () => nextSlowResult
         };
@@ -31,11 +38,14 @@ test("fast and slow pass run end-to-end in the built renderer", async ({ page })
 
     await page.goto(serverUrl);
     await expect(page.getByText(/JSONL logs:/)).toBeVisible();
+    await expect(page.getByText("Nothing to review yet.")).toBeVisible();
     await page.getByLabel("Folder").fill(fixtureDir);
-    await page.getByRole("button", { name: "Start Fast Pass" }).click();
+    await expect(page.locator("#folder-preview")).toContainText("images ready to scan");
+    await page.getByLabel("Folder").press("Enter");
     await expect(page.locator("#status-line")).toContainText("Fast Pass finished");
     await expect(page.getByText("base.png").first()).toBeVisible();
     await expect(page.getByText(/Fast Pass finished with/)).toBeVisible();
+    await expect(page.getByText("Review duplicate groups")).toBeVisible();
 
     await page.getByRole("button", { name: "Start Slow Pass" }).click();
     await expect(page.locator("#status-line")).toContainText("Slow Pass finished");

@@ -1,0 +1,85 @@
+{
+  "timestamp": "2026-04-22T20:08:01.250Z",
+  "issues": [
+    {
+      "id": 1,
+      "severity": "high",
+      "category": "feedback",
+      "issue": "No progress percentage or file count during scan",
+      "description": "The progress bar is indeterminate and doesn't show how many files have been processed or estimated time remaining. Users have no idea if the scan will take 10 seconds or 10 minutes.",
+      "recommendation": "Add real-time progress updates showing: current file being processed, X of Y files scanned, percentage complete, and estimated time remaining."
+    },
+    {
+      "id": 2,
+      "severity": "high",
+      "category": "responsiveness",
+      "issue": "UI completely freezes during backend processing",
+      "description": "All buttons and inputs are disabled during scan. Users cannot cancel an ongoing scan or perform any other action. For large folders, this is frustrating.",
+      "recommendation": "Keep UI responsive: add a cancel button, process in smaller chunks to allow UI updates, show a modal with progress instead of disabling everything."
+    },
+    {
+      "id": 3,
+      "severity": "medium",
+      "category": "visual",
+      "issue": "Theme has low contrast and dated appearance",
+      "description": "The sepia/beige color scheme feels dated. Text contrast could be improved for accessibility. The serif font may not be ideal for technical data.",
+      "recommendation": "Modernize with a cleaner color palette (blues/grays), ensure WCAG AA contrast compliance, use sans-serif for data, add dark mode option."
+    },
+    {
+      "id": 4,
+      "severity": "high",
+      "category": "feedback",
+      "issue": "No preview of images being compared",
+      "description": "Users must manually open files to see what images look like. The duplicate detection shows file paths but no visual preview, making it hard to verify duplicates.",
+      "recommendation": "Add thumbnail previews for duplicate groups so users can visually confirm duplicates without opening files. Show representative image and thumbnails of duplicates."
+    },
+    {
+      "id": 5,
+      "severity": "high",
+      "category": "interaction",
+      "issue": "No way to select and delete duplicates from the app",
+      "description": "The app only shows duplicates but provides no action to delete or move them. Users must manually navigate to files in Explorer.",
+      "recommendation": "Add actions per group: 'Delete selected', 'Move to folder', 'Open containing folder' buttons. Allow selecting which files to keep/delete."
+    },
+    {
+      "id": 6,
+      "severity": "low",
+      "category": "feedback",
+      "issue": "Activity log is limited to 8 entries",
+      "description": "Previous activity is lost quickly, making it hard to track history across multiple scans.",
+      "recommendation": "Increase activity log size to 50+ entries or make it scrollable with more history. Add timestamps."
+    },
+    {
+      "id": 7,
+      "severity": "medium",
+      "category": "visual",
+      "issue": "Results cards feel cramped and hard to scan",
+      "description": "Long file paths wrap awkwardly, the layout feels dense, and it's hard to quickly scan through many duplicates.",
+      "recommendation": "Improve card layout: better spacing, truncate long paths with tooltips, add visual separation between groups, use icons for file types."
+    },
+    {
+      "id": 8,
+      "severity": "medium",
+      "category": "feature",
+      "issue": "Cannot compare fast vs slow pass results",
+      "description": "Users can't easily see what the slow pass found that the fast pass missed. No way to compare results side by side.",
+      "recommendation": "Add ability to view both results, highlight differences, or show a comparison view."
+    },
+    {
+      "id": 9,
+      "severity": "medium",
+      "category": "interaction",
+      "issue": "No way to filter or sort duplicate groups",
+      "description": "With many duplicates, it's hard to find specific groups. No search, filter by file type, or sort by size/count.",
+      "recommendation": "Add filters: by file type, by folder, by similarity score. Add sorting: by group size, by file size, by path."
+    },
+    {
+      "id": 10,
+      "severity": "low",
+      "category": "interaction",
+      "issue": "No keyboard shortcuts for common actions",
+      "description": "Power users would benefit from keyboard navigation: Enter to start scan, Escape to cancel, arrow keys to navigate results.",
+      "recommendation": "Add keyboard shortcuts: Ctrl+O to browse, Ctrl+F for fast pass, Ctrl+S for slow pass, Escape to cancel."
+    }
+  ]
+}

@@ -1,19 +1,43 @@
-import type { DetectionResult } from "../shared/types";
-import { renderErrorMarkup, renderResultsMarkup, renderSummaryMarkup } from "./view";
+import type { DetectionResult, ScanProgress, ScanUpdate } from "../shared/types";
+import {
+  renderFolderPreviewEmptyMarkup,
+  renderFolderPreviewLoadingMarkup,
+  renderFolderPreviewMarkup,
+  renderErrorMarkup,
+  renderResultsEmptyMarkup,
+  renderResultsLoadingMarkup,
+  renderResultsMarkup,
+  renderSummaryEmptyMarkup,
+  renderSummaryLoadingMarkup,
+  renderSummaryMarkup
+} from "./view";
+
+type StatusTone = "idle" | "running" | "success" | "warning" | "error";
 
 const folderInput = mustElement<HTMLInputElement>("folder-input");
 const browseButton = mustElement<HTMLButtonElement>("browse-button");
 const fastButton = mustElement<HTMLButtonElement>("fast-button");
 const slowButton = mustElement<HTMLButtonElement>("slow-button");
+const cancelButton = mustElement<HTMLButtonElement>("cancel-button");
 const activityCount = mustElement<HTMLElement>("activity-count");
 const activityList = mustElement<HTMLOListElement>("activity-list");
 const logPathLine = mustElement<HTMLElement>("log-path-line");
+const folderPreview = mustElement<HTMLDivElement>("folder-preview");
 const progressBar = mustElement<HTMLElement>("progress-bar");
+const progressText = mustElement<HTMLElement>("progress-text");
+const progressPercent = mustElement<HTMLElement>("progress-percent");
+const selectedFolder = mustElement<HTMLElement>("selected-folder");
 const statusBadge = mustElement<HTMLElement>("status-badge");
 const summaryGrid = mustElement<HTMLDivElement>("summary-grid");
 const statusLine = mustElement<HTMLElement>("status-line");
 const resultsPanel = mustElement<HTMLDivElement>("results-panel");
 const activityEntries: Array<{ time: string; text: string }> = [];
+
+let isScanning = false;
+let currentScanMode: "fast" | "slow" | null = null;
+let folderPreviewRequestId = 0;
+let folderPreviewTimer: number | null = null;
+let unsubscribeScanUpdates: (() => void) | null = null;
 
 void initialize();
 
@@ -24,10 +48,9 @@ browseButton.addEventListener("click", async () => {
 
   const selected = await window.imageDedupApi.browseFolder();
   if (selected) {
-    folderInput.value = selected;
-    folderInput.removeAttribute("aria-invalid");
-    updateStatus(`Folder selected: ${selected}`, "success");
-    recordActivity(`Folder selected: ${selected}`);
+    setFolder(selected);
+    updateStatus(`Ready to scan ${shortenMiddle(selected, 56)}.`, "success");
+    recordActivity(`Folder selected: ${shortenMiddle(selected, 60)}.`);
     void logUiEvent("browse.completed", { selected });
     return;
   }
@@ -35,6 +58,30 @@ browseButton.addEventListener("click", async () => {
   updateStatus("Folder selection canceled.", "warning");
   recordActivity("Folder selection canceled.");
   void logUiEvent("browse.canceled");
+});
+
+folderInput.addEventListener("input", () => {
+  folderInput.removeAttribute("aria-invalid");
+  syncSelectedFolder(folderInput.value.trim());
+  queueFolderPreview(folderInput.value.trim());
+});
+
+folderInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey || event.repeat) {
+    return;
+  }
+
+  event.preventDefault();
+  void runPass("fast");
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !isScanning) {
+    return;
+  }
+
+  event.preventDefault();
+  void requestCancelScan();
 });
 
 fastButton.addEventListener("click", async () => {
@@ -45,52 +92,178 @@ slowButton.addEventListener("click", async () => {
   await runPass("slow");
 });
 
+cancelButton.addEventListener("click", async () => {
+  await requestCancelScan();
+});
+
+function handleScanUpdate(update: ScanUpdate): void {
+  if (update.type === "progress") {
+    updateProgressUI(update);
+  } else if (update.type === "complete") {
+    handleScanComplete(update.result);
+  } else if (update.type === "error") {
+    handleScanError(update.message);
+  } else if (update.type === "cancelled") {
+    handleScanCancelled();
+  }
+}
+
+function updateProgressUI(progress: ScanProgress): void {
+  const percent = progress.percentComplete;
+  progressPercent.textContent = `${percent}%`;
+  progressText.textContent = formatProgressText(progress);
+
+  // Update progress bar if it supports value
+  const progressBarElement = progressBar as unknown as HTMLProgressElement;
+  if ("value" in progressBarElement) {
+    progressBarElement.value = percent;
+    progressBarElement.max = 100;
+  }
+
+  // Update status line with current file
+  if (progress.currentPath) {
+    const fileName = progress.currentPath.split(/[/\\]/).pop() || progress.currentPath;
+    updateStatus(
+      `${labelForMode(currentScanMode!)}: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"}) - ${shortenMiddle(fileName, 40)}`,
+      "running"
+    );
+  } else {
+    updateStatus(
+      `${labelForMode(currentScanMode!)}: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"})`,
+      "running"
+    );
+  }
+}
+
+function formatProgressText(progress: ScanProgress): string {
+  const parts: string[] = [];
+  const unitLabel = progress.phase === "comparing" ? "comparisons" : "images";
+  parts.push(`${progress.currentFile}/${progress.totalFiles} ${unitLabel}`);
+
+  if (progress.estimatedTimeRemainingMs && progress.estimatedTimeRemainingMs > 0) {
+    const seconds = Math.ceil(progress.estimatedTimeRemainingMs / 1000);
+    if (seconds < 60) {
+      parts.push(`~${seconds}s remaining`);
+    } else {
+      const minutes = Math.ceil(seconds / 60);
+      parts.push(`~${minutes}m remaining`);
+    }
+  }
+
+  return parts.join(" • ");
+}
+
+function handleScanComplete(result: DetectionResult): void {
+  isScanning = false;
+  currentScanMode = null;
+
+  if (unsubscribeScanUpdates) {
+    unsubscribeScanUpdates();
+    unsubscribeScanUpdates = null;
+  }
+
+  renderSummary(result);
+  renderResults(result);
+  updateStatus(
+    `${labelForMode(result.mode)} finished in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
+    result.warnings.length === 0 ? "success" : "warning"
+  );
+  recordActivity(
+    `${labelForMode(result.mode)} finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
+  );
+  void logUiEvent("scan.completed", {
+    elapsedMs: result.elapsedMs,
+    groupCount: result.groups.length,
+    mode: result.mode,
+    scannedFileCount: result.scannedFileCount,
+    warnings: result.warnings
+  });
+
+  setBusy(false, result.mode);
+}
+
+function handleScanError(message: string): void {
+  const failedMode = currentScanMode ?? "fast";
+  isScanning = false;
+  currentScanMode = null;
+
+  if (unsubscribeScanUpdates) {
+    unsubscribeScanUpdates();
+    unsubscribeScanUpdates = null;
+  }
+
+  summaryGrid.innerHTML = renderSummaryEmptyMarkup();
+  resultsPanel.innerHTML = renderErrorMarkup(message);
+  updateStatus(`${labelForMode(failedMode)} failed: ${message}`, "error");
+  recordActivity(`${labelForMode(failedMode)} failed: ${message}`);
+  void logUiEvent("scan.failed", { error: message, mode: failedMode }, "error");
+
+  setBusy(false, failedMode);
+}
+
+function handleScanCancelled(): void {
+  const cancelledMode = currentScanMode ?? "fast";
+  isScanning = false;
+  currentScanMode = null;
+
+  if (unsubscribeScanUpdates) {
+    unsubscribeScanUpdates();
+    unsubscribeScanUpdates = null;
+  }
+
+  updateStatus(`${labelForMode(cancelledMode)} cancelled.`, "warning");
+  setBusy(false, cancelledMode);
+}
+
 async function runPass(mode: "fast" | "slow"): Promise<void> {
   const folder = folderInput.value.trim();
   if (!folder) {
     folderInput.setAttribute("aria-invalid", "true");
+    folderInput.focus();
     updateStatus("Enter a folder path first.", "error");
     recordActivity(`${labelForMode(mode)} blocked because no folder was provided.`);
     void logUiEvent("scan.blocked.empty_folder", { mode }, "warn");
     return;
   }
 
+  // Subscribe to scan updates
+  const supportsScanUpdates = typeof window.imageDedupApi.onScanUpdate === "function";
+
+  if (unsubscribeScanUpdates) {
+    unsubscribeScanUpdates();
+  }
+  unsubscribeScanUpdates = supportsScanUpdates ? window.imageDedupApi.onScanUpdate(handleScanUpdate) : null;
+
+  isScanning = true;
+  currentScanMode = mode;
+
   folderInput.removeAttribute("aria-invalid");
+  syncSelectedFolder(folder);
+  renderPendingScanState(mode, folder);
   setBusy(true, mode);
-  updateStatus(`${labelForMode(mode)} is running...`, "running");
-  recordActivity(`${labelForMode(mode)} started for ${folder}.`);
+  updateStatus(`${labelForMode(mode)} is starting...`, "running");
+  recordActivity(`${labelForMode(mode)} started for ${shortenMiddle(folder, 60)}.`);
   void logUiEvent("scan.started", { folder, mode });
 
   try {
     const result = mode === "fast"
-      ? await window.imageDedupApi.startFastPass(folder) as DetectionResult
-      : await window.imageDedupApi.startSlowPass(folder) as DetectionResult;
+      ? await window.imageDedupApi.startFastPass(folder) as DetectionResult | null
+      : await window.imageDedupApi.startSlowPass(folder) as DetectionResult | null;
 
-    renderSummary(result);
-    renderResults(result);
-    updateStatus(
-      `${labelForMode(mode)} finished in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
-      result.warnings.length === 0 ? "success" : "warning"
-    );
-    recordActivity(
-      `${labelForMode(mode)} finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
-    );
-    void logUiEvent("scan.completed", {
-      elapsedMs: result.elapsedMs,
-      folder,
-      groupCount: result.groups.length,
-      mode,
-      scannedFileCount: result.scannedFileCount,
-      warnings: result.warnings
-    });
+    if (!supportsScanUpdates) {
+      if (result) {
+        handleScanComplete(result);
+      } else {
+        handleScanCancelled();
+      }
+    }
   } catch (error) {
+    if (supportsScanUpdates) {
+      return;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
-    updateStatus(`${labelForMode(mode)} failed: ${message}`, "error");
-    recordActivity(`${labelForMode(mode)} failed: ${message}`);
-    void logUiEvent("scan.failed", { error: message, folder, mode }, "error");
-    resultsPanel.innerHTML = renderErrorMarkup(message);
-  } finally {
-    setBusy(false, mode);
+    handleScanError(message);
   }
 }
 
@@ -102,25 +275,63 @@ function renderResults(result: DetectionResult): void {
   resultsPanel.innerHTML = renderResultsMarkup(result);
 }
 
+function renderPendingScanState(mode: "fast" | "slow", folder: string): void {
+  const passLabel = labelForMode(mode);
+  summaryGrid.innerHTML = renderSummaryLoadingMarkup(passLabel);
+  resultsPanel.innerHTML = renderResultsLoadingMarkup(passLabel, folder);
+}
+
+async function requestCancelScan(): Promise<void> {
+  if (!isScanning) {
+    return;
+  }
+
+  await window.imageDedupApi.cancelScan();
+  updateStatus("Scan cancelled by user.", "warning");
+  recordActivity("Scan cancelled.");
+  void logUiEvent("scan.cancelled");
+}
+
 function labelForMode(mode: "fast" | "slow"): string {
   return mode === "fast" ? "Fast Pass" : "Slow Pass";
 }
 
+function labelForPhase(phase: ScanProgress["phase"]): string {
+  switch (phase) {
+    case "hashing":
+      return "preparing images";
+    case "comparing":
+      return "comparing matches";
+    case "complete":
+      return "wrapping up";
+    default:
+      return "discovering files";
+  }
+}
+
 function setBusy(busy: boolean, mode: "fast" | "slow"): void {
-  browseButton.disabled = busy;
+  browseButton.disabled = false;
   fastButton.disabled = busy;
   slowButton.disabled = busy;
-  folderInput.disabled = busy;
+  folderInput.disabled = false;
+  cancelButton.disabled = !busy;
+  cancelButton.dataset.visible = String(busy);
   progressBar.dataset.visible = String(busy);
+  progressText.dataset.visible = String(busy);
+  progressPercent.dataset.visible = String(busy);
+
   if (busy) {
     (mode === "fast" ? fastButton : slowButton).textContent = `${labelForMode(mode)} Running`;
   } else {
     fastButton.textContent = "Start Fast Pass";
     slowButton.textContent = "Start Slow Pass";
+    // Reset progress display
+    progressPercent.textContent = "0%";
+    progressText.textContent = "";
   }
 }
 
-function updateStatus(message: string, tone: "idle" | "running" | "success" | "warning" | "error" = "idle"): void {
+function updateStatus(message: string, tone: StatusTone = "idle"): void {
   statusLine.textContent = message;
   statusLine.className = `status status-${tone}`;
   statusLine.setAttribute("variant", variantForTone(tone));
@@ -138,17 +349,88 @@ function mustElement<T extends HTMLElement>(id: string): T {
 }
 
 async function initialize(): Promise<void> {
+  folderPreview.dataset.state = "empty";
+  folderPreview.innerHTML = renderFolderPreviewEmptyMarkup("Choose a folder to preview a few images before scanning.");
+  summaryGrid.innerHTML = renderSummaryEmptyMarkup();
+  resultsPanel.innerHTML = renderResultsEmptyMarkup();
+  syncSelectedFolder(folderInput.value.trim());
+  updateStatus("Choose a folder, then start with Fast Pass.", "idle");
   recordActivity("Renderer initialized.");
   void logUiEvent("renderer.initialized");
 
   try {
     const { directory } = await window.imageDedupApi.getLogInfo();
-    logPathLine.textContent = `JSONL logs: ${directory}`;
-    recordActivity(`Log directory ready: ${directory}`);
+    logPathLine.textContent = `JSONL logs: ${shortenMiddle(directory, 56)}`;
+    logPathLine.title = directory;
+    recordActivity(`Log directory ready: ${shortenMiddle(directory, 60)}.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logPathLine.textContent = `Could not resolve log directory: ${message}`;
+    logPathLine.removeAttribute("title");
     void logUiEvent("logs.info.failed", { error: message }, "warn");
+  }
+}
+
+function setFolder(folder: string): void {
+  folderInput.value = folder;
+  folderInput.removeAttribute("aria-invalid");
+  syncSelectedFolder(folder);
+  queueFolderPreview(folder);
+}
+
+function syncSelectedFolder(folder: string): void {
+  if (!folder) {
+    selectedFolder.dataset.visible = "false";
+    selectedFolder.textContent = "Paste a folder path or use Browse to pick one.";
+    selectedFolder.removeAttribute("title");
+    folderPreview.dataset.state = "empty";
+    folderPreview.innerHTML = renderFolderPreviewEmptyMarkup("Choose a folder to preview a few images before scanning.");
+    return;
+  }
+
+  selectedFolder.dataset.visible = "true";
+  selectedFolder.textContent = `Selected folder: ${shortenMiddle(folder, 76)}`;
+  selectedFolder.title = folder;
+}
+
+function queueFolderPreview(folder: string): void {
+  folderPreviewRequestId += 1;
+  const requestId = folderPreviewRequestId;
+
+  if (folderPreviewTimer !== null) {
+    window.clearTimeout(folderPreviewTimer);
+    folderPreviewTimer = null;
+  }
+
+  if (!folder) {
+    folderPreview.dataset.state = "empty";
+    folderPreview.innerHTML = renderFolderPreviewEmptyMarkup("Choose a folder to preview a few images before scanning.");
+    return;
+  }
+
+  folderPreview.dataset.state = "loading";
+  folderPreview.innerHTML = renderFolderPreviewLoadingMarkup(folder);
+  folderPreviewTimer = window.setTimeout(() => {
+    void loadFolderPreview(folder, requestId);
+  }, 180);
+}
+
+async function loadFolderPreview(folder: string, requestId: number): Promise<void> {
+  try {
+    const preview = await window.imageDedupApi.getFolderPreview(folder);
+    if (requestId !== folderPreviewRequestId) {
+      return;
+    }
+
+    folderPreview.dataset.state = preview.imageCount === 0 ? "empty" : "ready";
+    folderPreview.innerHTML = renderFolderPreviewMarkup(preview);
+  } catch {
+    if (requestId !== folderPreviewRequestId) {
+      return;
+    }
+
+    folderPreview.dataset.state = "empty";
+    folderPreview.innerHTML = renderFolderPreviewEmptyMarkup("Use an existing folder path to preview its image files.");
   }
 }
 
@@ -161,7 +443,7 @@ function recordActivity(text: string): void {
       second: "2-digit"
     })
   });
-  activityEntries.splice(8);
+  activityEntries.splice(24);
   activityCount.textContent = String(activityEntries.length);
   activityList.innerHTML = activityEntries.map((entry) => `
     <li>
@@ -171,7 +453,7 @@ function recordActivity(text: string): void {
   `).join("");
 }
 
-function badgeLabelForTone(tone: "idle" | "running" | "success" | "warning" | "error"): string {
+function badgeLabelForTone(tone: StatusTone): string {
   switch (tone) {
     case "running":
       return "Running";
@@ -186,7 +468,7 @@ function badgeLabelForTone(tone: "idle" | "running" | "success" | "warning" | "e
   }
 }
 
-function variantForTone(tone: "idle" | "running" | "success" | "warning" | "error"): string {
+function variantForTone(tone: StatusTone): string {
   switch (tone) {
     case "running":
       return "brand";
@@ -211,6 +493,17 @@ async function logUiEvent(
   } catch {
     recordActivity(`Logging failed for ${event}.`);
   }
+}
+
+function shortenMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  const remaining = maxLength - 1;
+  const prefixLength = Math.ceil(remaining * 0.58);
+  const suffixLength = remaining - prefixLength;
+  return `${value.slice(0, prefixLength)}…${value.slice(value.length - suffixLength)}`;
 }
 
 function escapeHtml(value: string): string {

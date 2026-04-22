@@ -13,9 +13,8 @@
           <p class="eyebrow">Local Duplicate Detection</p>
           <h1>ImageDedup</h1>
           <p class="lede">
-          Fast pass uses `imghash` perceptual hashes across 0/90/180/270 rotation. Slow pass uses
-          `ssim.js` over normalized rotated and cropped variants for transformed near-duplicates from
-          the same source.
+            Fast Pass quickly catches obvious duplicates. Slow Pass takes longer and checks rotated,
+            resized, tinted, and otherwise transformed near-duplicates from the same source.
           </p>
         </div>
         <div class="hero-meta">
@@ -35,15 +34,31 @@
           </div>
           <label class="field">
             <span>Folder</span>
-            <input id="folder-input" placeholder="C:\images\dataset" type="text" />
+            <input
+              aria-describedby="folder-help"
+              id="folder-input"
+              placeholder="C:\images\dataset"
+              type="text"
+            />
           </label>
+          <p class="field-help" id="folder-help">
+            Start with Fast Pass for a quick sweep, then use Slow Pass when you want to catch
+            transformed matches.
+          </p>
+          <p class="selection-preview" data-visible="false" id="selected-folder"></p>
+          <section class="folder-preview" data-state="empty" id="folder-preview"></section>
           <div class="actions">
-            <button id="browse-button" type="button">Browse</button>
-            <button id="fast-button" type="button">Start Fast Pass</button>
-            <button id="slow-button" type="button">Start Slow Pass</button>
+            <button id="browse-button" type="button" class="btn-secondary">Browse</button>
+            <button id="fast-button" type="button" class="btn-primary">Start Fast Pass</button>
+            <button id="slow-button" type="button" class="btn-primary">Start Slow Pass</button>
+            <button id="cancel-button" type="button" class="btn-danger" data-visible="false" disabled>Cancel Scan</button>
           </div>
           <div class="progress-wrap">
-            <wa-progress-bar class="progress-bar" id="progress-bar" indeterminate></wa-progress-bar>
+            <div class="progress-header">
+              <span class="progress-percent" id="progress-percent" data-visible="false">0%</span>
+              <span class="progress-text" id="progress-text" data-visible="false"></span>
+            </div>
+            <wa-progress-bar class="progress-bar" id="progress-bar" data-visible="false"></wa-progress-bar>
           </div>
           <wa-callout class="status status-idle" id="status-line" variant="neutral">
             Pick a folder and start a pass.
