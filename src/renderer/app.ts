@@ -171,7 +171,15 @@ function handleScanComplete(result: DetectionResult): void {
   recordActivity(
     `${labelForMode(result.mode)} finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
   );
+  if (result.diagnostics) {
+    const hottestPhase = Object.entries(result.diagnostics.phasesMs)
+      .sort((left, right) => right[1] - left[1])[0];
+    if (hottestPhase) {
+      recordActivity(`Slow-pass hotspot: ${formatPhaseLabel(hottestPhase[0])} took ${hottestPhase[1]} ms.`);
+    }
+  }
   void logUiEvent("scan.completed", {
+    diagnostics: result.diagnostics,
     elapsedMs: result.elapsedMs,
     groupCount: result.groups.length,
     mode: result.mode,
@@ -306,6 +314,23 @@ function labelForPhase(phase: ScanProgress["phase"]): string {
       return "wrapping up";
     default:
       return "discovering files";
+  }
+}
+
+function formatPhaseLabel(phase: string): string {
+  switch (phase) {
+    case "signatureBuild":
+      return "signature build";
+    case "candidateFilter":
+      return "candidate filter";
+    case "variantLoad":
+      return "variant loading";
+    case "similarityCompare":
+      return "SSIM comparison";
+    case "groupBuild":
+      return "group build";
+    default:
+      return phase;
   }
 }
 

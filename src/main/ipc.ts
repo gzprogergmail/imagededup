@@ -138,6 +138,7 @@ export function registerIpcHandlers(): void {
 
       webContents.send("scan:update", { type: "complete", result });
       await logEvent("main", "scan.slow.completed", {
+        diagnostics: result.diagnostics,
         elapsedMs: result.elapsedMs,
         folder: parsedFolder,
         groupCount: result.groups.length,

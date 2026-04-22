@@ -16,6 +16,9 @@ describe("runSlowPass", () => {
     const result = await runSlowPass(files);
     expect(result.library).toBe("ssim.js");
     expect(result.groups.length).toBeGreaterThanOrEqual(1);
+    expect(result.diagnostics?.phasesMs.signatureBuild).toBeGreaterThan(0);
+    expect(result.diagnostics?.phasesMs.similarityCompare).toBeGreaterThan(0);
+    expect(result.diagnostics?.counters.totalPairs).toBeGreaterThan(0);
 
     const largestGroup = result.groups[0];
     expect(largestGroup?.files).toContain(fixtures.base);
@@ -40,5 +43,6 @@ describe("runSlowPass", () => {
       skipPairs: new Set([pairKeyFor(fixtures.base, fixtures.resized)])
     });
     expect(withSkip.groups).toHaveLength(0);
+    expect(withSkip.diagnostics?.counters.skippedFastPassPairs).toBe(1);
   }, 120000);
 });

@@ -50,6 +50,7 @@ test("fast and slow pass run end-to-end in the built renderer", async ({ page })
     await page.getByRole("button", { name: "Start Slow Pass" }).click();
     await expect(page.locator("#status-line")).toContainText("Slow Pass finished");
     await expect(page.getByText("slow-rotated-12.png").first()).toBeVisible();
+    await expect(page.getByText("Performance profile")).toBeVisible();
   } finally {
     await stop();
   }

@@ -659,6 +659,48 @@ wa-callout.status::part(base) {
   font-weight: 500;
 }
 
+.diagnostics-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.diagnostic-chip,
+.diagnostic-row {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.diagnostic-chip {
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostics-list {
+  display: grid;
+  gap: 8px;
+}
+
+.diagnostic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diagnostic-label {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.diagnostic-value {
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

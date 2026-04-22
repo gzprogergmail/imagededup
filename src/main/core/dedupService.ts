@@ -147,6 +147,7 @@ export async function scanSlow(folder: string, callbacks?: ScanCallbacks): Promi
     : await runSlowPass(files, {}, slowPassOptions);
 
   await logEvent("scan", "slow.completed", {
+    diagnostics: result.diagnostics,
     elapsedMs: result.elapsedMs,
     fileCount: files.length,
     groupCount: result.groups.length,

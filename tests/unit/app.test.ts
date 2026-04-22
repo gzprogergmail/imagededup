@@ -27,6 +27,26 @@ const fastResult = {
 
 const warningResult = {
   ...fastResult,
+  diagnostics: {
+    counters: {
+      candidatePairs: 4,
+      matchedPairs: 1,
+      rejectedBySignature: 8,
+      skippedFastPassPairs: 0,
+      skippedMergedPairs: 1,
+      totalPairs: 15,
+      variantCacheHits: 3,
+      variantCacheMisses: 2,
+      variantComparisons: 21
+    },
+    phasesMs: {
+      candidateFilter: 12,
+      groupBuild: 1,
+      signatureBuild: 8,
+      similarityCompare: 51,
+      variantLoad: 18
+    }
+  },
   mode: "slow" as const,
   warnings: ["Skipped unreadable image"]
 };
@@ -144,6 +164,8 @@ describe("renderer app", () => {
     await waitFor(() => {
       expect(document.getElementById("status-badge")?.textContent).toContain("Attention");
       expect(document.getElementById("results-panel")?.textContent).toContain("Skipped unreadable image");
+      expect(document.getElementById("results-panel")?.textContent).toContain("Performance profile");
+      expect(document.getElementById("activity-list")?.textContent).toContain("Slow-pass hotspot");
     });
   });
 

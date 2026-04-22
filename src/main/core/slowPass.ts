@@ -1,42 +1,52 @@
-import sharp from "sharp";
-import ssim from "ssim.js";
+import { existsSync } from "node:fs";
+import { cpus } from "node:os";
+import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 
 import { UnionFind } from "../../shared/unionFind";
-import type { DetectionResult, DuplicateGroup, ImageRecord } from "../../shared/types";
+import type { DetectionResult, DuplicateGroup, ImageRecord, ScanDiagnostics } from "../../shared/types";
+import {
+  compareVariantsTiered,
+  isCandidatePair,
+  loadCandidateSignatures,
+  loadVariants,
+  MATCH_THRESHOLD,
+  pairKeyFor,
+  type ImageVariant,
+  type SimilarityScore
+} from "./slowPassShared";
 
-const ROTATION_ANGLES = [0, -12, 12] as const;
-const CROP_FACTORS = [1, 0.85, 0.75] as const;
-const EARLY_EXIT_THRESHOLD = 0.97;
-const HASH_DIMENSION = 16;
-const HASH_DISTANCE_THRESHOLD = 64;
-const MATCH_THRESHOLD = 0.72;
-const STAGING_SIZE = 192;
-const TARGET_WIDTH = 128;
-const TARGET_HEIGHT = 128;
-const HASH_TRANSFORMS = [
-  { flipped: false, rotation: 0 },
-  { flipped: false, rotation: -12 },
-  { flipped: false, rotation: 12 },
-  { flipped: true, rotation: 0 },
-  { flipped: true, rotation: -12 },
-  { flipped: true, rotation: 12 }
-] as const;
+const LOCAL_BATCH_SIZE = 4;
+const MIN_PARALLEL_CANDIDATES = 12;
+const PAIRS_PER_WORKER_TASK = 4;
+const WORKER_COUNT = Math.max(1, Math.min(2, cpus().length - 1));
 
-interface ImageVariant {
-  data: Uint8ClampedArray;
-  height: number;
-  key: string;
-  width: number;
+interface SlowPassMetrics {
+  counters: ScanDiagnostics["counters"];
+  phasesMs: ScanDiagnostics["phasesMs"];
 }
 
-interface CandidateSignature {
-  bits: Uint8Array;
-  key: string;
+interface CandidatePair {
+  leftPath: string;
+  rightPath: string;
 }
 
-interface SimilarityScore {
-  evidence: string;
-  score: number;
+interface PairOutcome {
+  comparisons: number;
+  leftPath: string;
+  rightPath: string;
+  score: SimilarityScore | null;
+}
+
+interface ComparisonBatchResult {
+  metrics: {
+    similarityCompare: number;
+    variantCacheHits: number;
+    variantCacheMisses: number;
+    variantComparisons: number;
+    variantLoad: number;
+  };
+  outcomes: PairOutcome[];
 }
 
 export interface SlowPassCallbacks {
@@ -56,6 +66,8 @@ export async function runSlowPass(
   options: SlowPassOptions = {}
 ): Promise<DetectionResult> {
   const startedAt = performance.now();
+  const metrics = createSlowPassMetrics();
+  const signatureBuildStartedAt = performance.now();
   const signatures = await Promise.all(files.map(async (file) => {
     const nextSignatures = await loadCandidateSignatures(file.path);
     callbacks.onSignature?.(file.path);
@@ -64,13 +76,15 @@ export async function runSlowPass(
       signatures: nextSignatures
     };
   }));
+  metrics.phasesMs.signatureBuild += performance.now() - signatureBuildStartedAt;
 
   const unionFind = new UnionFind();
   const evidence = new Map<string, SimilarityScore>();
-  const variantCache = new Map<string, Promise<ImageVariant[]>>();
   const totalComparisons = (files.length * (files.length - 1)) / 2;
+  const candidatePairs: CandidatePair[] = [];
   let comparisonsDone = 0;
 
+  metrics.counters.totalPairs = totalComparisons;
   callbacks.onComparisonStart?.(totalComparisons);
 
   for (const file of files) {
@@ -90,184 +104,107 @@ export async function runSlowPass(
       const left = signatures[leftIndex];
       const right = signatures[rightIndex];
       if (!left || !right) {
+        comparisonsDone += 1;
+        callbacks.onComparison?.(comparisonsDone);
         continue;
       }
-
-      comparisonsDone += 1;
-      callbacks.onComparison?.(comparisonsDone);
 
       if (options.skipPairs?.has(pairKeyFor(left.file.path, right.file.path))) {
+        metrics.counters.skippedFastPassPairs += 1;
+        comparisonsDone += 1;
+        callbacks.onComparison?.(comparisonsDone);
         continue;
       }
 
-      // Once a pair is already in the same connected component, we have
-      // already confirmed that path to be duplicate-related and can skip
-      // more expensive candidate and SSIM work for it.
-      if (unionFind.find(left.file.path) === unionFind.find(right.file.path)) {
+      const candidateFilterStartedAt = performance.now();
+      const candidatePair = isCandidatePair(left.signatures, right.signatures);
+      metrics.phasesMs.candidateFilter += performance.now() - candidateFilterStartedAt;
+
+      if (!candidatePair) {
+        metrics.counters.rejectedBySignature += 1;
+        comparisonsDone += 1;
+        callbacks.onComparison?.(comparisonsDone);
         continue;
       }
 
-      if (!isCandidatePair(left.signatures, right.signatures)) {
-        continue;
-      }
-
-      const [leftVariants, rightVariants] = await Promise.all([
-        getVariants(left.file.path, variantCache),
-        getVariants(right.file.path, variantCache)
-      ]);
-      const score = compareVariants(leftVariants, rightVariants);
-      if (!score || score.score < MATCH_THRESHOLD) {
-        continue;
-      }
-
-      const groupRoot = unionFind.union(left.file.path, right.file.path);
-      const previous = evidence.get(groupRoot);
-      if (!previous || score.score > previous.score) {
-        evidence.set(groupRoot, score);
-      }
+      metrics.counters.candidatePairs += 1;
+      candidatePairs.push({
+        leftPath: left.file.path,
+        rightPath: right.file.path
+      });
     }
   }
 
+  const comparisonRunner = await createComparisonRunner(candidatePairs.length);
+  try {
+    const waveSize = comparisonRunner.parallelTaskCount * PAIRS_PER_WORKER_TASK;
+    const variantCache = new Map<string, Promise<ImageVariant[]>>();
+
+    for (let waveStart = 0; waveStart < candidatePairs.length; waveStart += waveSize) {
+      if (callbacks.isCancelled?.()) {
+        break;
+      }
+
+      const currentWave = candidatePairs.slice(waveStart, waveStart + waveSize);
+      const pendingPairs: CandidatePair[] = [];
+
+      for (const pair of currentWave) {
+        if (unionFind.find(pair.leftPath) === unionFind.find(pair.rightPath)) {
+          metrics.counters.skippedMergedPairs += 1;
+          comparisonsDone += 1;
+          callbacks.onComparison?.(comparisonsDone);
+          continue;
+        }
+
+        pendingPairs.push(pair);
+      }
+
+      if (pendingPairs.length === 0) {
+        continue;
+      }
+
+      const chunks = chunkPairs(
+        pendingPairs,
+        comparisonRunner.parallelTaskCount > 1 ? PAIRS_PER_WORKER_TASK : LOCAL_BATCH_SIZE
+      );
+      const results = await Promise.all(chunks.map((chunk) => comparisonRunner.compare(chunk, variantCache)));
+
+      for (const result of results) {
+        applyComparisonMetrics(metrics, result.metrics);
+
+        for (const outcome of result.outcomes) {
+          comparisonsDone += 1;
+          callbacks.onComparison?.(comparisonsDone);
+
+          if (!outcome.score || outcome.score.score < MATCH_THRESHOLD) {
+            continue;
+          }
+
+          metrics.counters.matchedPairs += 1;
+          const groupRoot = unionFind.union(outcome.leftPath, outcome.rightPath);
+          const previous = evidence.get(groupRoot);
+          if (!previous || outcome.score.score > previous.score) {
+            evidence.set(groupRoot, outcome.score);
+          }
+        }
+      }
+    }
+  } finally {
+    await comparisonRunner.close();
+  }
+
+  const groupBuildStartedAt = performance.now();
+  const groups = buildSlowGroups(files, unionFind, evidence);
+  metrics.phasesMs.groupBuild += performance.now() - groupBuildStartedAt;
+
   return {
+    diagnostics: roundSlowPassMetrics(metrics),
     elapsedMs: Math.round(performance.now() - startedAt),
-    groups: buildSlowGroups(files, unionFind, evidence),
+    groups,
     library: "ssim.js",
     mode: "slow",
     scannedFileCount: files.length,
     warnings: []
-  };
-}
-
-async function getVariants(
-  filePath: string,
-  cache: Map<string, Promise<ImageVariant[]>>
-): Promise<ImageVariant[]> {
-  const cached = cache.get(filePath);
-  if (cached) {
-    return cached;
-  }
-
-  const next = loadVariants(filePath);
-  cache.set(filePath, next);
-  return next;
-}
-
-async function loadCandidateSignatures(filePath: string): Promise<CandidateSignature[]> {
-  return Promise.all(HASH_TRANSFORMS.map(async ({ flipped, rotation }) => {
-    const pipeline = sharp(filePath)
-      .rotate(rotation, { background: "#fbf7ef" })
-      .normalise()
-      .resize(HASH_DIMENSION, HASH_DIMENSION, { background: "#fbf7ef", fit: "contain" })
-      .grayscale();
-
-    const transformed = flipped ? pipeline.flop() : pipeline;
-    const data = await transformed.raw().toBuffer();
-    const average = data.reduce((sum, value) => sum + value, 0) / data.length;
-
-    return {
-      bits: Uint8Array.from(data, (value) => (value >= average ? 1 : 0)),
-      key: `${rotation}:${flipped ? "flipped" : "plain"}`
-    };
-  }));
-}
-
-async function loadVariants(filePath: string): Promise<ImageVariant[]> {
-  const variants = await Promise.all(
-    ROTATION_ANGLES.flatMap(async (angle) => {
-      const normalized = await sharp(filePath)
-        .rotate(angle, { background: "#fbf7ef" })
-        .normalise()
-        .resize(STAGING_SIZE, STAGING_SIZE, { background: "#fbf7ef", fit: "contain" })
-        .png()
-        .toBuffer();
-
-      return Promise.all(CROP_FACTORS.map(async (cropFactor) => {
-        const cropSize = Math.max(Math.round(STAGING_SIZE * cropFactor), TARGET_WIDTH);
-        const offset = Math.max(Math.round((STAGING_SIZE - cropSize) / 2), 0);
-        const { data, info } = await sharp(normalized)
-          .extract({
-            height: cropSize,
-            left: offset,
-            top: offset,
-            width: cropSize
-          })
-          .resize(TARGET_WIDTH, TARGET_HEIGHT, { background: "#fbf7ef", fit: "fill" })
-          .ensureAlpha()
-          .raw()
-          .toBuffer({ resolveWithObject: true });
-
-        return {
-          data: new Uint8ClampedArray(data),
-          height: info.height,
-          key: `${angle}:${cropFactor}`,
-          width: info.width
-        } satisfies ImageVariant;
-      }));
-    })
-  );
-
-  return variants.flat();
-}
-
-function isCandidatePair(left: CandidateSignature[], right: CandidateSignature[]): boolean {
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  for (const leftSignature of left) {
-    for (const rightSignature of right) {
-      const distance = hammingDistance(leftSignature.bits, rightSignature.bits);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-      }
-
-      if (bestDistance <= HASH_DISTANCE_THRESHOLD) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function hammingDistance(left: Uint8Array, right: Uint8Array): number {
-  let distance = 0;
-
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) {
-      distance += 1;
-    }
-  }
-
-  return distance;
-}
-
-function compareVariants(left: ImageVariant[], right: ImageVariant[]): SimilarityScore | null {
-  let bestScore = 0;
-  let bestKey = "";
-
-  for (const leftVariant of left) {
-    for (const rightVariant of right) {
-      const { mssim } = ssim(leftVariant, rightVariant);
-      if (mssim > bestScore) {
-        bestScore = mssim;
-        bestKey = `${leftVariant.key} x ${rightVariant.key}`;
-      }
-
-      if (bestScore > EARLY_EXIT_THRESHOLD) {
-        return {
-          evidence: `best SSIM ${bestScore.toFixed(4)} at ${bestKey}`,
-          score: Number(bestScore.toFixed(4))
-        };
-      }
-    }
-  }
-
-  if (bestScore === 0) {
-    return null;
-  }
-
-  return {
-    evidence: `best SSIM ${bestScore.toFixed(4)} at ${bestKey}`,
-    score: Number(bestScore.toFixed(4))
   };
 }
 
@@ -298,6 +235,243 @@ function buildSlowGroups(
     .sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
 }
 
-export function pairKeyFor(left: string, right: string): string {
-  return left < right ? `${left}\n${right}` : `${right}\n${left}`;
+interface ComparisonRunner {
+  close: () => Promise<void>;
+  compare: (pairs: CandidatePair[], variantCache: Map<string, Promise<ImageVariant[]>>) => Promise<ComparisonBatchResult>;
+  parallelTaskCount: number;
 }
+
+async function createComparisonRunner(candidatePairCount: number): Promise<ComparisonRunner> {
+  const workerScriptPath = join(__dirname, "slowPassWorker.js");
+  const shouldUseWorkers = candidatePairCount >= MIN_PARALLEL_CANDIDATES
+    && WORKER_COUNT > 1
+    && existsSync(workerScriptPath);
+
+  if (!shouldUseWorkers) {
+    return {
+      close: async () => undefined,
+      compare: async (pairs, variantCache) => compareLocally(pairs, variantCache),
+      parallelTaskCount: 1
+    };
+  }
+
+  /* c8 ignore start */
+  const pool = new SlowPassWorkerPool(workerScriptPath, WORKER_COUNT);
+  return {
+    close: async () => pool.close(),
+    compare: async (pairs) => pool.compare(pairs),
+    parallelTaskCount: WORKER_COUNT
+  };
+  /* c8 ignore stop */
+}
+
+async function compareLocally(
+  pairs: CandidatePair[],
+  variantCache: Map<string, Promise<ImageVariant[]>>
+): Promise<ComparisonBatchResult> {
+  const metrics = {
+    similarityCompare: 0,
+    variantCacheHits: 0,
+    variantCacheMisses: 0,
+    variantComparisons: 0,
+    variantLoad: 0
+  };
+  const outcomes: PairOutcome[] = [];
+
+  for (const pair of pairs) {
+    const variantLoadStartedAt = performance.now();
+    const [leftVariants, rightVariants] = await Promise.all([
+      getVariants(pair.leftPath, variantCache, metrics),
+      getVariants(pair.rightPath, variantCache, metrics)
+    ]);
+    metrics.variantLoad += performance.now() - variantLoadStartedAt;
+
+    const similarityStartedAt = performance.now();
+    const comparison = compareVariantsTiered(leftVariants, rightVariants);
+    metrics.similarityCompare += performance.now() - similarityStartedAt;
+    metrics.variantComparisons += comparison.comparisons;
+
+    outcomes.push({
+      comparisons: comparison.comparisons,
+      leftPath: pair.leftPath,
+      rightPath: pair.rightPath,
+      score: comparison.score
+    });
+  }
+
+  return {
+    metrics: {
+      similarityCompare: Math.round(metrics.similarityCompare),
+      variantCacheHits: metrics.variantCacheHits,
+      variantCacheMisses: metrics.variantCacheMisses,
+      variantComparisons: metrics.variantComparisons,
+      variantLoad: Math.round(metrics.variantLoad)
+    },
+    outcomes
+  };
+}
+
+async function getVariants(
+  filePath: string,
+  cache: Map<string, Promise<ImageVariant[]>>,
+  metrics: {
+    similarityCompare: number;
+    variantCacheHits: number;
+    variantCacheMisses: number;
+    variantComparisons: number;
+    variantLoad: number;
+  }
+): Promise<ImageVariant[]> {
+  const cached = cache.get(filePath);
+  if (cached) {
+    metrics.variantCacheHits += 1;
+    return cached;
+  }
+
+  metrics.variantCacheMisses += 1;
+  const next = loadVariants(filePath);
+  cache.set(filePath, next);
+  return next;
+}
+
+/* c8 ignore start */
+class SlowPassWorkerPool {
+  private readonly workers: Array<{
+    pending: Map<number, {
+      reject: (error: unknown) => void;
+      resolve: (value: ComparisonBatchResult) => void;
+    }>;
+    worker: Worker;
+  }>;
+  private nextTaskId = 1;
+  private nextWorkerIndex = 0;
+
+  constructor(workerScriptPath: string, workerCount: number) {
+    this.workers = Array.from({ length: workerCount }, () => {
+      const worker = new Worker(workerScriptPath);
+      const record = {
+        pending: new Map<number, {
+          reject: (error: unknown) => void;
+          resolve: (value: ComparisonBatchResult) => void;
+        }>(),
+        worker
+      };
+
+      worker.on("message", (message: ComparisonBatchResult & { taskId: number }) => {
+        const pending = record.pending.get(message.taskId);
+        if (!pending) {
+          return;
+        }
+
+        record.pending.delete(message.taskId);
+        pending.resolve({
+          metrics: message.metrics,
+          outcomes: message.outcomes
+        });
+      });
+
+      worker.on("error", (error) => {
+        for (const pending of record.pending.values()) {
+          pending.reject(error);
+        }
+        record.pending.clear();
+      });
+
+      worker.on("exit", (code) => {
+        if (code === 0) {
+          return;
+        }
+
+        const error = new Error(`slowPassWorker exited with code ${code}`);
+        for (const pending of record.pending.values()) {
+          pending.reject(error);
+        }
+        record.pending.clear();
+      });
+
+      return record;
+    });
+  }
+
+  compare(pairs: CandidatePair[]): Promise<ComparisonBatchResult> {
+    const taskId = this.nextTaskId;
+    this.nextTaskId += 1;
+
+    const workerRecord = this.workers[this.nextWorkerIndex]!;
+    this.nextWorkerIndex = (this.nextWorkerIndex + 1) % this.workers.length;
+
+    return new Promise<ComparisonBatchResult>((resolve, reject) => {
+      workerRecord.pending.set(taskId, { reject, resolve });
+      workerRecord.worker.postMessage({
+        pairs,
+        taskId
+      });
+    });
+  }
+
+  async close(): Promise<void> {
+    await Promise.all(this.workers.map(async (record) => {
+      for (const pending of record.pending.values()) {
+        pending.reject(new Error("slowPassWorkerPool closed before the task completed"));
+      }
+      record.pending.clear();
+      await record.worker.terminate();
+    }));
+  }
+}
+/* c8 ignore stop */
+
+function chunkPairs(pairs: CandidatePair[], size: number): CandidatePair[][] {
+  const chunks: CandidatePair[][] = [];
+
+  for (let index = 0; index < pairs.length; index += size) {
+    chunks.push(pairs.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+function applyComparisonMetrics(
+  metrics: SlowPassMetrics,
+  comparisonMetrics: ComparisonBatchResult["metrics"]
+): void {
+  metrics.counters.variantCacheHits += comparisonMetrics.variantCacheHits;
+  metrics.counters.variantCacheMisses += comparisonMetrics.variantCacheMisses;
+  metrics.counters.variantComparisons += comparisonMetrics.variantComparisons;
+  metrics.phasesMs.similarityCompare += comparisonMetrics.similarityCompare;
+  metrics.phasesMs.variantLoad += comparisonMetrics.variantLoad;
+}
+
+function createSlowPassMetrics(): SlowPassMetrics {
+  return {
+    counters: {
+      candidatePairs: 0,
+      matchedPairs: 0,
+      rejectedBySignature: 0,
+      skippedFastPassPairs: 0,
+      skippedMergedPairs: 0,
+      totalPairs: 0,
+      variantCacheHits: 0,
+      variantCacheMisses: 0,
+      variantComparisons: 0
+    },
+    phasesMs: {
+      candidateFilter: 0,
+      groupBuild: 0,
+      signatureBuild: 0,
+      similarityCompare: 0,
+      variantLoad: 0
+    }
+  };
+}
+
+function roundSlowPassMetrics(metrics: SlowPassMetrics): ScanDiagnostics {
+  return {
+    counters: { ...metrics.counters },
+    phasesMs: Object.fromEntries(
+      Object.entries(metrics.phasesMs).map(([key, value]) => [key, Math.round(value)])
+    ) as ScanDiagnostics["phasesMs"]
+  };
+}
+
+export { pairKeyFor };

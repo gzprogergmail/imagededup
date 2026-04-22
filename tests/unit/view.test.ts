@@ -26,6 +26,26 @@ const preview = {
 };
 
 const result: DetectionResult = {
+  diagnostics: {
+    counters: {
+      candidatePairs: 4,
+      matchedPairs: 1,
+      rejectedBySignature: 9,
+      skippedFastPassPairs: 2,
+      skippedMergedPairs: 1,
+      totalPairs: 16,
+      variantCacheHits: 3,
+      variantCacheMisses: 2,
+      variantComparisons: 27
+    },
+    phasesMs: {
+      candidateFilter: 12,
+      groupBuild: 1,
+      signatureBuild: 8,
+      similarityCompare: 44,
+      variantLoad: 15
+    }
+  },
   elapsedMs: 120,
   groups: [
     {
@@ -88,6 +108,13 @@ describe("renderer view", () => {
   it("renders an empty-state result card", () => {
     const markup = renderResultsMarkup({ ...result, groups: [] });
     expect(markup).toContain("No duplicate groups were found.");
+  });
+
+  it("renders performance diagnostics when available", () => {
+    const markup = renderResultsMarkup(result);
+    expect(markup).toContain("Performance profile");
+    expect(markup).toContain("SSIM");
+    expect(markup).toContain("27");
   });
 
   it("renders an empty-state placeholder before a scan starts", () => {
