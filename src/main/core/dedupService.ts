@@ -4,13 +4,20 @@ import { resolve } from "node:path";
 import { logEvent } from "../logger";
 import { discoverImages } from "./imageDiscovery";
 import { runFastPass, type HashProvider } from "./fastPass";
-import { runSlowPass } from "./slowPass";
+import { pairKeyFor, runSlowPass, type SlowPassOptions } from "./slowPass";
 import type { ScanProgress, ImageRecord, DetectionResult, FolderPreview } from "../../shared/types";
 
 export interface ScanCallbacks {
   onProgress: (progress: ScanProgress) => void;
   isCancelled: () => boolean;
 }
+
+interface CachedFastPassMatches {
+  fingerprint: string;
+  skipPairs: Set<string>;
+}
+
+const fastPassMatchesByFolder = new Map<string, CachedFastPassMatches>();
 
 class ProgressTracker {
   private totalFiles: number;
@@ -90,6 +97,8 @@ class ProgressHashProvider implements HashProvider {
 export async function scanFast(folder: string, callbacks?: ScanCallbacks): Promise<DetectionResult> {
   await logEvent("scan", "fast.requested", { folder });
   const files = await listImages(folder);
+  const folderKey = resolve(folder);
+  const fingerprint = fingerprintForFiles(files);
   await logEvent("scan", "fast.files_discovered", {
     fileCount: files.length,
     folder
@@ -105,20 +114,37 @@ export async function scanFast(folder: string, callbacks?: ScanCallbacks): Promi
     groupCount: result.groups.length,
     warnings: result.warnings
   });
+  fastPassMatchesByFolder.set(folderKey, {
+    fingerprint,
+    skipPairs: buildSkipPairs(result)
+  });
   return result;
 }
 
 export async function scanSlow(folder: string, callbacks?: ScanCallbacks): Promise<DetectionResult> {
   await logEvent("scan", "slow.requested", { folder });
   const files = await listImages(folder);
+  const folderKey = resolve(folder);
+  const fingerprint = fingerprintForFiles(files);
+  const cachedFastPass = fastPassMatchesByFolder.get(folderKey);
+  const slowPassOptions: SlowPassOptions = (
+    cachedFastPass && cachedFastPass.fingerprint === fingerprint
+  )
+    ? { skipPairs: cachedFastPass.skipPairs }
+    : {};
   await logEvent("scan", "slow.files_discovered", {
     fileCount: files.length,
     folder
   });
+  await logEvent("scan", "slow.fast_pass_reuse", {
+    folder,
+    reusedPairs: slowPassOptions.skipPairs?.size ?? 0,
+    usedCachedFastPass: Boolean(slowPassOptions.skipPairs)
+  });
 
   const result = callbacks
-    ? await runSlowPassWithProgress(files, callbacks)
-    : await runSlowPass(files);
+    ? await runSlowPassWithProgress(files, callbacks, slowPassOptions)
+    : await runSlowPass(files, {}, slowPassOptions);
 
   await logEvent("scan", "slow.completed", {
     elapsedMs: result.elapsedMs,
@@ -156,7 +182,8 @@ async function runFastPassWithProgress(
 
 async function runSlowPassWithProgress(
   files: ImageRecord[],
-  callbacks: ScanCallbacks
+  callbacks: ScanCallbacks,
+  options: SlowPassOptions = {}
 ): Promise<DetectionResult> {
   const signatureTracker = new ProgressTracker(files.length, callbacks);
   signatureTracker.setPhase("hashing");
@@ -186,7 +213,7 @@ async function runSlowPassWithProgress(
     onSignature: (filePath) => {
       signatureTracker.increment(filePath);
     }
-  });
+  }, options);
 
   if (comparisonPhaseStarted) {
     comparisonTracker.setPhase("complete");
@@ -209,4 +236,28 @@ async function listImages(folder: string): Promise<ImageRecord[]> {
     imageCount: images.length
   });
   return images;
+}
+
+function buildSkipPairs(result: DetectionResult): Set<string> {
+  const skipPairs = new Set<string>();
+
+  for (const group of result.groups) {
+    for (let leftIndex = 0; leftIndex < group.files.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < group.files.length; rightIndex += 1) {
+        const left = group.files[leftIndex];
+        const right = group.files[rightIndex];
+        if (!left || !right) {
+          continue;
+        }
+
+        skipPairs.add(pairKeyFor(left, right));
+      }
+    }
+  }
+
+  return skipPairs;
+}
+
+function fingerprintForFiles(files: ImageRecord[]): string {
+  return files.map((file) => file.path).sort().join("\n");
 }

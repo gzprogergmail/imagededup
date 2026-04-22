@@ -46,9 +46,14 @@ export interface SlowPassCallbacks {
   onSignature?: (filePath: string) => void;
 }
 
+export interface SlowPassOptions {
+  skipPairs?: ReadonlySet<string>;
+}
+
 export async function runSlowPass(
   files: ImageRecord[],
-  callbacks: SlowPassCallbacks = {}
+  callbacks: SlowPassCallbacks = {},
+  options: SlowPassOptions = {}
 ): Promise<DetectionResult> {
   const startedAt = performance.now();
   const signatures = await Promise.all(files.map(async (file) => {
@@ -90,6 +95,17 @@ export async function runSlowPass(
 
       comparisonsDone += 1;
       callbacks.onComparison?.(comparisonsDone);
+
+      if (options.skipPairs?.has(pairKeyFor(left.file.path, right.file.path))) {
+        continue;
+      }
+
+      // Once a pair is already in the same connected component, we have
+      // already confirmed that path to be duplicate-related and can skip
+      // more expensive candidate and SSIM work for it.
+      if (unionFind.find(left.file.path) === unionFind.find(right.file.path)) {
+        continue;
+      }
 
       if (!isCandidatePair(left.signatures, right.signatures)) {
         continue;
@@ -280,4 +296,8 @@ function buildSlowGroups(
       score: evidenceByGroup.get(root)?.score
     }))
     .sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
+}
+
+export function pairKeyFor(left: string, right: string): string {
+  return left < right ? `${left}\n${right}` : `${right}\n${left}`;
 }
