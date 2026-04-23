@@ -36,7 +36,12 @@ jobs:
         run: npm run test:unit
 
       - name: Run e2e tests
+        if: runner.os != 'Linux'
         run: npm run test:e2e
+
+      - name: Run e2e tests (Linux with virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
 
       - name: Run performance tests
         run: npm run perf
