@@ -75,6 +75,17 @@ jobs:
         with:
           path: artifacts
 
+      - name: Install ClamAV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav clamav-daemon
+
+      - name: Update ClamAV database
+        run: sudo freshclam || true
+
+      - name: Scan release artifacts for malware
+        run: clamscan -r artifacts
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
