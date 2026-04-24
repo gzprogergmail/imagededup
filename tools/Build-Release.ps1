@@ -1,5 +1,7 @@
 param(
-  [switch]$SkipTests
+  [switch]$SkipTests,
+  [ValidateSet("dir", "linux", "win", "release")]
+  [string]$Target = "release"
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,4 +11,17 @@ if (-not $SkipTests) {
   npm test
 }
 
-npm run package
+switch ($Target) {
+  "dir" {
+    npm run package:dir
+  }
+  "linux" {
+    npm run release:linux
+  }
+  "win" {
+    npm run release:win
+  }
+  default {
+    npm run release
+  }
+}

@@ -19,9 +19,16 @@ ImageDedup is a local Electron desktop app for finding duplicate images in two p
 ## Commands
 
 - `.\init.ps1`: install npm dependencies and the Playwright Chromium browser.
-- `.\build.ps1`: build and package the app into `release`.
+- `.\build.ps1`: build release artifacts for the current platform into `release`.
+- `npm run release:win`: build Windows `nsis` installer and portable `.exe` artifacts into `release`.
+- `npm run release:linux`: build a Linux `AppImage` executable into `release`.
+- `npm run package:dir`: build an unpacked app directory into `release` for local inspection.
 - `.\start.ps1`: build and run the desktop app.
 - `npm test`: lint, unit tests, e2e tests, performance tests, and coverage gate.
+
+`build.ps1` and `tools/Build-Release.ps1` also accept `-Target dir|linux|win|release`.
+
+Windows release builds generally need to run on Windows, or on Linux with the Wine toolchain installed so `electron-builder` can emit `.exe` targets.
 
 ## Project Layout
 
