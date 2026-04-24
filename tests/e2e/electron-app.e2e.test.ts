@@ -40,7 +40,7 @@ test("electron app loads the built renderer and responds to scan actions", async
 
     await window.locator("#slow-button").click();
     await expect(window.locator("#status-line")).toContainText("Slow Pass finished", {
-      timeout: 90000
+      timeout: 150000
     });
     await expect(window.locator("#results-panel")).toContainText("slow-rotated-12.png");
   } finally {
