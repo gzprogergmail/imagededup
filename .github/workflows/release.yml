@@ -21,12 +21,15 @@ jobs:
           - os: windows-latest
             platform: win
             arch: x64
+            artifact_glob: release/*.exe
           - os: macos-latest
             platform: mac
             arch: x64
+            artifact_glob: release/*.dmg
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            artifact_glob: release/*.AppImage
 
     steps:
       - name: Checkout code
@@ -52,18 +55,15 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a npm test
 
-      - name: Build and package
-        run: npm run package
+      - name: Build executable release package
+        run: npm run package:release
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-${{ matrix.arch }}
-          path: |
-            release/win-unpacked/**
-            release/mac/**
-            release/linux-unpacked/**
-          if-no-files-found: ignore
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
 
   release:
     needs: build
@@ -88,8 +88,8 @@ jobs:
       - name: Update ClamAV database
         run: sudo freshclam || true
 
-      - name: Scan release artifacts for malware
-        run: clamscan -r artifacts
+      - name: Scan executable release artifacts for malware
+        run: clamscan --infected --recursive artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

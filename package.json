@@ -1,6 +1,6 @@
 {
   "name": "imagededup",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Electron desktop app for image duplicate detection with fast and slow passes.",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "e2e:fixtures": "node scripts/generate-test-images.mjs tests/.generated/e2e",
     "lint": "eslint .",
     "package": "npm run build && electron-builder --dir",
+    "package:release": "npm run build && electron-builder --publish never",
     "perf": "vitest run --config vitest.performance.config.ts",
     "start": "npm run build && electron .",
     "test": "npm run lint && npm run test:unit && npm run test:e2e && npm run perf && npm run coverage:check",
@@ -35,7 +36,36 @@
     ],
     "win": {
       "signAndEditExecutable": false,
-      "target": "dir"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "identity": null
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Graphics"
     }
   },
   "devDependencies": {
