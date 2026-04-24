@@ -10,8 +10,12 @@
     "coverage:check": "node scripts/check-coverage.mjs",
     "e2e:fixtures": "node scripts/generate-test-images.mjs tests/.generated/e2e",
     "lint": "eslint .",
-    "package": "npm run build && electron-builder --dir",
+    "package": "npm run package:dir",
+    "package:dir": "npm run build && electron-builder --dir --publish never",
     "perf": "vitest run --config vitest.performance.config.ts",
+    "release": "npm run build && electron-builder --publish never",
+    "release:linux": "npm run build && electron-builder --linux AppImage --publish never",
+    "release:win": "npm run build && electron-builder --win nsis portable --publish never",
     "start": "npm run build && electron .",
     "test": "npm run lint && npm run test:unit && npm run test:e2e && npm run perf && npm run coverage:check",
     "test:e2e": "npm run build && npm run e2e:fixtures && playwright test",
@@ -28,6 +32,7 @@
     "directories": {
       "output": "release"
     },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "dist/**/*",
       "node_modules/**/*",
@@ -35,7 +40,35 @@
     ],
     "win": {
       "signAndEditExecutable": false,
-      "target": "dir"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     }
   },
   "devDependencies": {
