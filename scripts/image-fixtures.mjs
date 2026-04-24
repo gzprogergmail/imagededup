@@ -91,3 +91,27 @@ export async function generateFixtureSet(targetDir) {
     unique
   };
 }
+
+export async function generateCompactFixtureSet(targetDir) {
+  const root = resolve(targetDir);
+  await mkdir(root, { recursive: true });
+
+  const base = join(root, "base.png");
+  const resized = join(root, "fast-resized.png");
+  const rotated12 = join(root, "slow-rotated-12.png");
+  const unique = join(root, "unique.png");
+
+  const baseBuffer = Buffer.from(createSvg("ALPHA", "#4957a6"));
+  await sharp(baseBuffer).png().toFile(base);
+  await sharp(baseBuffer).resize(760, 570).png().toFile(resized);
+  await sharp(baseBuffer).rotate(12, { background: "#fbf7ef" }).png().toFile(rotated12);
+  await sharp(Buffer.from(createUniqueSvg())).png().toFile(unique);
+
+  return {
+    base,
+    resized,
+    rotated12,
+    root,
+    unique
+  };
+}

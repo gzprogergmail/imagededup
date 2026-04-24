@@ -8,9 +8,9 @@ import { _electron as electron } from "playwright";
 test("electron app loads the built renderer and responds to scan actions", async () => {
   test.setTimeout(180000);
 
-  const { generateFixtureSet } = await import("../../scripts/image-fixtures.mjs");
+  const { generateCompactFixtureSet } = await import("../../scripts/image-fixtures.mjs");
   const fixtureDir = await mkdtemp(join(tmpdir(), "imagededup-electron-e2e-"));
-  await generateFixtureSet(fixtureDir);
+  await generateCompactFixtureSet(fixtureDir);
 
   const env = {
     ...process.env,
