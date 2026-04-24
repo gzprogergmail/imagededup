@@ -2,7 +2,46 @@
   "name": "imagededup",
   "version": "1.0.3",
   "description": "Electron desktop app for image duplicate detection with fast and slow passes.",
+  "keywords": [
+    "electron",
+    "image",
+    "deduplication",
+    "duplicates",
+    "perceptual-hash"
+  ],
+  "homepage": "https://github.com/gzprogergmail/imagededup#readme",
+  "bugs": {
+    "url": "https://github.com/gzprogergmail/imagededup/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gzprogergmail/imagededup.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
   "main": "dist/main/main/main.js",
+  "bin": {
+    "imagededup": "./bin/imagededup.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "package.json",
+    "tsconfig*.json",
+    "vite.config.ts"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
@@ -13,6 +52,7 @@
     "package": "npm run package:dir",
     "package:dir": "npm run build && electron-builder --dir --publish never",
     "package:release": "npm run release",
+    "prepack": "npm run build",
     "perf": "vitest run --config vitest.performance.config.ts",
     "release": "npm run build && electron-builder --publish never",
     "release:linux": "npm run build && electron-builder --linux AppImage --publish never",
@@ -22,10 +62,6 @@
     "test:e2e": "npm run build && npm run e2e:fixtures && playwright test",
     "test:unit": "vitest run --coverage"
   },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "type": "commonjs",
   "build": {
     "appId": "com.local.imagededup",
     "productName": "ImageDedup",
@@ -92,7 +128,6 @@
     "@vitest/coverage-v8": "^4.1.5",
     "c8": "^11.0.0",
     "concurrently": "^9.2.1",
-    "electron": "^41.3.0",
     "electron-builder": "^26.8.1",
     "eslint": "^10.2.1",
     "jsdom": "^29.0.2",
@@ -105,6 +140,7 @@
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.5.0",
+    "electron": "^41.3.0",
     "fast-glob": "^3.3.3",
     "imghash": "^1.1.0",
     "sharp": "^0.34.4",

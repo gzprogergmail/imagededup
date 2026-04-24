@@ -59,11 +59,22 @@ jobs:
       - name: Build executable release package
         run: npm run package:release
 
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path release -File | Where-Object { $_.Name -match '\.(exe|dmg|AppImage)$' }
+          foreach ($file in $files) {
+            $hash = Get-FileHash -Algorithm SHA256 -Path $file.FullName
+            "$($hash.Hash.ToLowerInvariant())  $($file.Name)" | Out-File -FilePath "$($file.FullName).sha256" -Encoding ascii
+          }
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-${{ matrix.arch }}
-          path: ${{ matrix.artifact_glob }}
+          path: |
+            ${{ matrix.artifact_glob }}
+            release/*.sha256
           if-no-files-found: error
 
   release:
@@ -105,3 +116,32 @@ jobs:
             artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build npm package contents
+        run: npm run build
+
+      - name: Publish npm package with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
