@@ -1,6 +1,6 @@
 {
   "name": "imagededup",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Electron desktop app for image duplicate detection with fast and slow passes.",
   "main": "dist/main/main/main.js",
   "scripts": {

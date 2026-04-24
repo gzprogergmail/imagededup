@@ -87,10 +87,12 @@ jobs:
           sudo apt-get install -y clamav clamav-daemon
 
       - name: Update ClamAV database
-        run: sudo freshclam || true
+        run: |
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --stdout
 
       - name: Scan executable release artifacts for malware
-        run: clamscan --infected --recursive artifacts
+        run: clamscan --database=/var/lib/clamav --infected --recursive artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
