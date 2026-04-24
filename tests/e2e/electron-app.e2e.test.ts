@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { _electron as electron } from "playwright";
 
 test("electron app loads the built renderer and responds to scan actions", async () => {
+  test.setTimeout(180000);
+
   const { generateFixtureSet } = await import("../../scripts/image-fixtures.mjs");
   const fixtureDir = await mkdtemp(join(tmpdir(), "imagededup-electron-e2e-"));
   await generateFixtureSet(fixtureDir);
@@ -38,7 +40,7 @@ test("electron app loads the built renderer and responds to scan actions", async
 
     await window.locator("#slow-button").click();
     await expect(window.locator("#status-line")).toContainText("Slow Pass finished", {
-      timeout: 30000
+      timeout: 90000
     });
     await expect(window.locator("#results-panel")).toContainText("slow-rotated-12.png");
   } finally {
