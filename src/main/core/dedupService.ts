@@ -127,7 +127,10 @@ async function runFastPassWithProgress(
   const baseProvider = new ImghashProvider();
   const progressProvider = new ProgressHashProvider(baseProvider, tracker);
 
-  const result = await runFastPass(files, progressProvider);
+  const result = await runFastPass(files, progressProvider, undefined, (done, total) => {
+    if (done === 0) tracker.setPhase("comparing");
+    if (!callbacks.isCancelled()) tracker.advanceTo(done, undefined);
+  });
   tracker.setPhase("complete");
   return result;
 }

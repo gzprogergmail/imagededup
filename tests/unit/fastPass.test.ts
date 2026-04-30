@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 
 import { discoverImages } from "../../src/main/core/imageDiscovery";
-import { dctHash, runFastPass, type HashProvider } from "../../src/main/core/fastPass";
+import { dctHash, runFastPass, HAMMING_THRESHOLD, type HashProvider } from "../../src/main/core/fastPass";
+import { hammingDistance } from "../../src/main/core/bkTree";
 
 describe("dctHash", () => {
   it("returns a 16-character hex string", () => {
@@ -134,5 +135,106 @@ describe("runFastPass", () => {
     expect(result.groups[0]!.files).toContain("/img/b.png");
     expect(result.groups[0]!.files).not.toContain("/img/c.png");
     expect(result.scannedFileCount).toBe(3);
+  });
+
+  it("groups near-duplicate files whose hashes are within the Hamming threshold", async () => {
+    // base hash — all zeros
+    const BASE = "0000000000000000";
+    // near: differs by 5 bits (0x1f = 00011111 → 5 bits in last nibble pair)
+    const NEAR = "000000000000001f";
+    expect(hammingDistance(BASE, NEAR)).toBe(5);
+    expect(hammingDistance(BASE, NEAR)).toBeLessThanOrEqual(HAMMING_THRESHOLD);
+
+    const files = [
+      { path: "/img/base.png", basename: "base.png" },
+      { path: "/img/near.png", basename: "near.png" },
+      { path: "/img/unique.png", basename: "unique.png" }
+    ];
+
+    const provider: HashProvider = {
+      getHashes: async (filePath) => {
+        if (filePath.endsWith("base.png")) return [BASE];
+        if (filePath.endsWith("near.png")) return [NEAR];
+        return ["ffffffffffffffff"]; // far away (dist=64 from BASE)
+      }
+    };
+
+    const result = await runFastPass(files, provider);
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0]!.files).toContain("/img/base.png");
+    expect(result.groups[0]!.files).toContain("/img/near.png");
+    expect(result.groups[0]!.files).not.toContain("/img/unique.png");
+  });
+
+  it("does not group files whose hashes exceed the Hamming threshold", async () => {
+    // differs by 11 bits (0x7ff = 011 1111 1111 → split across nibbles: 7=3 bits, f=4, f=4 → 11 bits)
+    const A = "0000000000000000";
+    const B = "00000000000007ff";
+    expect(hammingDistance(A, B)).toBe(11);
+    expect(hammingDistance(A, B)).toBeGreaterThan(HAMMING_THRESHOLD);
+
+    const files = [
+      { path: "/img/a.png", basename: "a.png" },
+      { path: "/img/b.png", basename: "b.png" }
+    ];
+
+    const provider: HashProvider = {
+      getHashes: async (filePath) => (filePath.endsWith("a.png") ? [A] : [B])
+    };
+
+    const result = await runFastPass(files, provider);
+    expect(result.groups).toHaveLength(0);
+    expect(result.scannedFileCount).toBe(2);
+  });
+
+  it("links transitive near-duplicates (A≈B, B≈C → A,B,C in one group)", async () => {
+    // A and B are within threshold; B and C are within threshold; A and C may be at the edge.
+    const A = "0000000000000000"; // reference
+    const B = "000000000000001f"; // dist(A,B)=5 ✓
+    const C = "00000000000003e0"; // dist(B,C): B=0x1f=0001_1111, C=0x3e0=0011_1110_0000
+    // dist(B="000000000000001f", C="00000000000003e0"):
+    //   nibble 13: B=0x0 vs C=0x3 → XOR=3 → 2 bits
+    //   nibble 14: B=0x1 vs C=0xe → XOR=0xf → 4 bits
+    //   nibble 15: B=0xf vs C=0x0 → XOR=0xf → 4 bits  → total 10 bits ✓
+    expect(hammingDistance(B, C)).toBeLessThanOrEqual(HAMMING_THRESHOLD);
+
+    const files = [
+      { path: "/img/a.png", basename: "a.png" },
+      { path: "/img/b.png", basename: "b.png" },
+      { path: "/img/c.png", basename: "c.png" }
+    ];
+
+    const provider: HashProvider = {
+      getHashes: async (filePath) => {
+        if (filePath.endsWith("a.png")) return [A];
+        if (filePath.endsWith("b.png")) return [B];
+        return [C];
+      }
+    };
+
+    const result = await runFastPass(files, provider);
+    expect(result.groups).toHaveLength(1);
+    const groupFiles = result.groups[0]!.files;
+    expect(groupFiles).toContain("/img/a.png");
+    expect(groupFiles).toContain("/img/b.png");
+    expect(groupFiles).toContain("/img/c.png");
+  });
+
+  it("invokes onMatchProgress callback at start and end of matching phase", async () => {
+    const files = Array.from({ length: 5 }, (_, i) => ({
+      path: `/img/file-${i}.png`,
+      basename: `file-${i}.png`
+    }));
+    const provider: HashProvider = {
+      getHashes: async () => ["aabbccddeeff0011"]
+    };
+
+    const calls: Array<[number, number]> = [];
+    await runFastPass(files, provider, HAMMING_THRESHOLD, (done, total) => {
+      calls.push([done, total]);
+    });
+
+    expect(calls[0]).toEqual([0, 5]);
+    expect(calls[calls.length - 1]).toEqual([5, 5]);
   });
 });

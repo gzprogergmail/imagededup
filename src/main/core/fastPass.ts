@@ -2,6 +2,7 @@ import { cpus } from "node:os";
 
 import sharp from "sharp";
 
+import { BKTree } from "./bkTree";
 import { UnionFind } from "../../shared/unionFind";
 import type { DetectionResult, DuplicateGroup, ImageRecord } from "../../shared/types";
 
@@ -9,6 +10,26 @@ const ROTATIONS = [0, 90, 180, 270] as const;
 const SAMPLE_SIZE = 32;
 const HASH_SIZE = 8;
 const CONCURRENCY = Math.min(cpus().length * 2, 16);
+
+/**
+ * Maximum Hamming distance (in bits out of 64) at which two pHashes are
+ * considered near-duplicates. Threshold of 10 catches same-photo variants
+ * (recompressed, slightly brightened, etc.) while avoiding false positives
+ * on visually distinct images.
+ */
+export const HAMMING_THRESHOLD = 10;
+
+/**
+ * Number of files to process per synchronous batch in the matching phase
+ * before yielding to the event loop. Keeps IPC and progress updates
+ * responsive during large scans.
+ */
+const YIELD_BATCH_SIZE = 1000;
+
+/** Yield one tick to the event loop so IPC/progress messages can be dispatched. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 // Precompute DCT cosine table: cosTable[u][x] = cos((2x+1)*u*π / (2*N))
 const cosTable: number[][] = Array.from({ length: HASH_SIZE }, (_, u) =>
@@ -121,37 +142,54 @@ class Semaphore {
 
 export async function runFastPass(
   files: ImageRecord[],
-  hashProvider: HashProvider = new ImghashProvider()
+  hashProvider: HashProvider = new ImghashProvider(),
+  hammingThreshold = HAMMING_THRESHOLD,
+  onMatchProgress?: (done: number, total: number) => void
 ): Promise<DetectionResult> {
   const startedAt = performance.now();
-  const hashIndex = new Map<string, string>();
-  const firstHashByFile = new Map<string, string>();
-  const unionFind = new UnionFind();
   const semaphore = new Semaphore(CONCURRENCY);
 
-  // Pre-register all paths before any async work so union-find is fully populated.
+  // ── Phase 1: Hash all files concurrently ──────────────────────────────────
+  // Bounded by the semaphore; sharp I/O yields naturally to the event loop
+  // between each file so IPC and progress callbacks remain responsive.
+  const fileHashMap = new Map<string, string[]>();
+
+  await Promise.all(files.map(async (file) => {
+    await semaphore.acquire();
+    try {
+      const hashes = await hashProvider.getHashes(file.path);
+      fileHashMap.set(file.path, hashes);
+    } finally {
+      semaphore.release();
+    }
+  }));
+
+  // ── Phase 2: BK-tree near-duplicate matching ──────────────────────────────
+  // Sequential, but chunked: we yield to the event loop every YIELD_BATCH_SIZE
+  // files so that IPC messages (progress, cancel) are never starved.
+  const bkTree = new BKTree();
+  const firstHashByFile = new Map<string, string>();
+  const unionFind = new UnionFind();
+
   for (const file of files) {
     unionFind.add(file.path);
   }
 
-  await Promise.all(files.map(async (file) => {
-    await semaphore.acquire();
-    let hashes: string[];
-    try {
-      hashes = await hashProvider.getHashes(file.path);
-    } finally {
-      semaphore.release();
+  for (let i = 0; i < files.length; i++) {
+    if (i % YIELD_BATCH_SIZE === 0) {
+      onMatchProgress?.(i, files.length);
+      await yieldToEventLoop();
     }
 
-    // This section is synchronous (no awaits) — safe to run without a lock
-    // because JS is single-threaded and microtasks run to completion.
+    const file = files[i]!;
+    const hashes = fileHashMap.get(file.path) ?? [];
     firstHashByFile.set(file.path, hashes[0] ?? "unknown");
 
+    // Find all near-duplicate file paths already indexed, then merge their roots.
     const matchedRoots = [...new Set(
       hashes
-        .map((hash) => hashIndex.get(hash))
-        .filter((value): value is string => Boolean(value))
-        .map((value) => unionFind.find(value))
+        .flatMap((hash) => bkTree.query(hash, hammingThreshold))
+        .map((match) => unionFind.find(match.filePath))
     )];
 
     let groupSeed = file.path;
@@ -159,10 +197,13 @@ export async function runFastPass(
       groupSeed = unionFind.union(groupSeed, matchedRoot);
     }
 
+    // Index this file's hashes for future queries.
     for (const hash of hashes) {
-      hashIndex.set(hash, groupSeed);
+      bkTree.insert(hash, file.path);
     }
-  }));
+  }
+
+  onMatchProgress?.(files.length, files.length);
 
   const groups = buildGroups(files, firstHashByFile, unionFind);
   return {
