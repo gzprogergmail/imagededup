@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { BKTree, hammingDistance } from "../../src/main/core/bkTree";
+import { BKTree, MIHIndex, hammingDistance } from "../../src/main/core/bkTree";
+import { HAMMING_THRESHOLD } from "../../src/main/core/fastPass";
 
 // ── hammingDistance ───────────────────────────────────────────────────────────
 
@@ -230,5 +231,183 @@ describe("BKTree accuracy", () => {
     // Actually: h[0]=0, h[1]=1(1bit), h[2]=3(2bits), h[3]=7(3bits), h[4]=15(4bits), h[5]=31(5bits), h[6]=63(6bits)...
     const results = tree.query("0000000000000000", 5);
     expect(results.length).toBeGreaterThanOrEqual(6); // 0 through 5 bits
+  });
+});
+
+// ── MIHIndex unit tests ───────────────────────────────────────────────────────
+
+describe("MIHIndex", () => {
+  it("starts empty", () => {
+    expect(new MIHIndex().size).toBe(0);
+  });
+
+  it("returns empty results when querying an empty index", () => {
+    expect(new MIHIndex().query("abcdef0123456789", 10)).toEqual([]);
+  });
+
+  it("finds an exact match at maxDist 0", () => {
+    const idx = new MIHIndex();
+    idx.insert("abcdef0123456789", "/img/a.png");
+    const results = idx.query("abcdef0123456789", 0);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.filePath).toBe("/img/a.png");
+    expect(results[0]!.dist).toBe(0);
+  });
+
+  it("does not return entries when maxDist is -1", () => {
+    const idx = new MIHIndex();
+    idx.insert("abcdef0123456789", "/img/a.png");
+    expect(idx.query("abcdef0123456789", -1)).toHaveLength(0);
+  });
+
+  it("tracks size correctly and ignores duplicate hash inserts", () => {
+    const idx = new MIHIndex();
+    idx.insert("0000000000000000", "/img/a.png");
+    expect(idx.size).toBe(1);
+    idx.insert("ffffffffffffffff", "/img/b.png");
+    expect(idx.size).toBe(2);
+    idx.insert("0000000000000000", "/img/c.png"); // same hash → no-op
+    expect(idx.size).toBe(2);
+  });
+
+  it("finds a 1-bit near-match within threshold", () => {
+    const idx = new MIHIndex();
+    idx.insert("abcdef0123456789", "/img/base.png");
+    const near = "abcdef012345678" + "8"; // last nibble 9→8: XOR=1 → 1 bit
+    expect(hammingDistance("abcdef0123456789", near)).toBe(1);
+
+    expect(idx.query(near, 5)).toHaveLength(1);
+    expect(idx.query(near, 1)).toHaveLength(1);
+    expect(idx.query(near, 0)).toHaveLength(0);
+  });
+
+  it("does not return entries beyond maxDist", () => {
+    const idx = new MIHIndex();
+    idx.insert("0000000000000000", "/img/a.png");
+    const distant = "ffffffff00000000"; // dist=32
+    expect(hammingDistance("0000000000000000", distant)).toBe(32);
+
+    expect(idx.query(distant, 10)).toHaveLength(0);
+    expect(idx.query(distant, 31)).toHaveLength(0);
+    expect(idx.query(distant, 32)).toHaveLength(1);
+  });
+
+  it("returns multiple results within threshold", () => {
+    const idx = new MIHIndex();
+    const base = "0000000000000000";
+    const v1 = "0000000000000001"; // dist 1
+    const v2 = "0000000000000002"; // dist 1
+    const v3 = "0000000000000003"; // dist 2
+    const far = "ffffffffffffffff"; // dist 64
+    idx.insert(base, "/img/base.png");
+    idx.insert(v1, "/img/v1.png");
+    idx.insert(v2, "/img/v2.png");
+    idx.insert(v3, "/img/v3.png");
+    idx.insert(far, "/img/far.png");
+
+    const results = idx.query(base, 2);
+    const paths = results.map((r) => r.filePath);
+    expect(paths).toContain("/img/base.png");
+    expect(paths).toContain("/img/v1.png");
+    expect(paths).toContain("/img/v2.png");
+    expect(paths).toContain("/img/v3.png");
+    expect(paths).not.toContain("/img/far.png");
+  });
+
+  it("stores the first filePath for a hash (duplicate insert is a no-op)", () => {
+    const idx = new MIHIndex();
+    idx.insert("abcdef0123456789", "/img/first.png");
+    idx.insert("abcdef0123456789", "/img/second.png");
+    const results = idx.query("abcdef0123456789", 0);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.filePath).toBe("/img/first.png");
+  });
+
+  it("respects the exact threshold boundary (dist=T included, dist=T+1 excluded)", () => {
+    const idx = new MIHIndex();
+    const base = "0000000000000000";
+    // 10 bits: 0x3ff → "00000000000003ff" → 0x3=2 bits, 0xff=8 bits → 10 bits ✓
+    const atThreshold = "00000000000003ff";
+    // 11 bits: 0x7ff → 0x7=3 bits, 0xff=8 bits → 11 bits ✓
+    const overThreshold = "00000000000007ff";
+    expect(hammingDistance(base, atThreshold)).toBe(10);
+    expect(hammingDistance(base, overThreshold)).toBe(11);
+
+    idx.insert(base, "/img/base.png");
+
+    expect(idx.query(atThreshold, HAMMING_THRESHOLD)).toHaveLength(1);
+    expect(idx.query(overThreshold, HAMMING_THRESHOLD)).toHaveLength(0);
+  });
+});
+
+// ── MIHIndex accuracy: cross-validate against brute force ────────────────────
+
+describe("MIHIndex accuracy", () => {
+  function deterministicHash(n: number): string {
+    const a = (Math.imul(n, 0x9e3779b9) >>> 0).toString(16).padStart(8, "0");
+    const b = (Math.imul(n, 0x6c62272e) >>> 0).toString(16).padStart(8, "0");
+    return a + b;
+  }
+
+  function bruteForceQuery(hashes: string[], query: string, maxDist: number): Set<string> {
+    return new Set(hashes.filter((h) => hammingDistance(h, query) <= maxDist));
+  }
+
+  it("matches brute-force results exactly for 200 hashes × 20 query probes (no false negatives or positives)", () => {
+    const N = 200;
+    const hashes = Array.from({ length: N }, (_, i) => deterministicHash(i));
+    const idx = new MIHIndex();
+    for (let i = 0; i < N; i++) idx.insert(hashes[i]!, `/img/${i}.png`);
+
+    for (let probe = 0; probe < 20; probe++) {
+      const queryHash = deterministicHash(N + probe * 7);
+      const bfHashes = bruteForceQuery(hashes, queryHash, HAMMING_THRESHOLD);
+      const mihHashes = new Set(idx.query(queryHash, HAMMING_THRESHOLD).map((r) => r.hash));
+
+      // No false negatives
+      for (const h of bfHashes) {
+        expect(mihHashes.has(h)).toBe(true);
+      }
+      // No false positives — every MIH result must be within threshold
+      for (const h of mihHashes) {
+        expect(hammingDistance(h, queryHash)).toBeLessThanOrEqual(HAMMING_THRESHOLD);
+      }
+      expect(mihHashes.size).toBe(bfHashes.size);
+    }
+  });
+
+  it("produces identical groups to BKTree when both index the same hashes", () => {
+    const N = 100;
+    const hashes = Array.from({ length: N }, (_, i) => deterministicHash(i));
+
+    const bkTree = new BKTree();
+    const mihIdx = new MIHIndex();
+    for (let i = 0; i < N; i++) {
+      bkTree.insert(hashes[i]!, `/img/${i}.png`);
+      mihIdx.insert(hashes[i]!, `/img/${i}.png`);
+    }
+
+    // For each query, MIH and BK-tree must return the same set of hashes
+    for (let probe = 0; probe < 30; probe++) {
+      const q = deterministicHash(N + probe);
+      const bkHashes = new Set(bkTree.query(q, HAMMING_THRESHOLD).map((r) => r.hash));
+      const mihHashes = new Set(mihIdx.query(q, HAMMING_THRESHOLD).map((r) => r.hash));
+
+      expect(mihHashes.size).toBe(bkHashes.size);
+      for (const h of bkHashes) {
+        expect(mihHashes.has(h)).toBe(true);
+      }
+    }
+  });
+
+  it("never misses a known near-duplicate at the threshold boundary", () => {
+    const idx = new MIHIndex();
+    const base = "0000000000000000";
+    const atThreshold = "00000000000003ff"; // dist=10
+    const overThreshold = "00000000000007ff"; // dist=11
+    idx.insert(base, "/img/base.png");
+
+    expect(idx.query(atThreshold, 10)).toHaveLength(1);
+    expect(idx.query(overThreshold, 10)).toHaveLength(0);
   });
 });

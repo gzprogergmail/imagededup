@@ -2,7 +2,7 @@ import { cpus } from "node:os";
 
 import sharp from "sharp";
 
-import { BKTree } from "./bkTree";
+import { MIHIndex } from "./bkTree";
 import { UnionFind } from "../../shared/unionFind";
 import type { DetectionResult, DuplicateGroup, ImageRecord } from "../../shared/types";
 
@@ -167,7 +167,7 @@ export async function runFastPass(
   // ── Phase 2: BK-tree near-duplicate matching ──────────────────────────────
   // Sequential, but chunked: we yield to the event loop every YIELD_BATCH_SIZE
   // files so that IPC messages (progress, cancel) are never starved.
-  const bkTree = new BKTree();
+  const mihIndex = new MIHIndex();
   const firstHashByFile = new Map<string, string>();
   const unionFind = new UnionFind();
 
@@ -188,7 +188,7 @@ export async function runFastPass(
     // Find all near-duplicate file paths already indexed, then merge their roots.
     const matchedRoots = [...new Set(
       hashes
-        .flatMap((hash) => bkTree.query(hash, hammingThreshold))
+        .flatMap((hash) => mihIndex.query(hash, hammingThreshold))
         .map((match) => unionFind.find(match.filePath))
     )];
 
@@ -199,7 +199,7 @@ export async function runFastPass(
 
     // Index this file's hashes for future queries.
     for (const hash of hashes) {
-      bkTree.insert(hash, file.path);
+      mihIndex.insert(hash, file.path);
     }
   }
 
