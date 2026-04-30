@@ -2,7 +2,7 @@ import { dialog, ipcMain, shell, type WebContents } from "electron";
 import { z } from "zod";
 import { dirname } from "path";
 
-import { previewFolder, scanFast, scanSlow, type ScanCallbacks } from "./core/dedupService";
+import { previewFolder, scanFast, type ScanCallbacks } from "./core/dedupService";
 import { getLogDirectory, logEvent } from "./logger";
 import type { ScanProgress } from "../shared/types";
 
@@ -102,54 +102,6 @@ export function registerIpcHandlers(): void {
       const message = error instanceof Error ? error.message : String(error);
       webContents.send("scan:update", { type: "error", message });
       await logEvent("main", "scan.fast.failed", { error, folder: parsedFolder }, "error");
-      throw error;
-    } finally {
-      activeScanCancel = null;
-    }
-  });
-
-  ipcMain.handle("scan:slow", async (event, folder) => {
-    const parsedFolder = folderSchema.parse(folder);
-    await logEvent("main", "scan.slow.started", { folder: parsedFolder });
-
-    const webContents = event.sender;
-
-    let isCancelled = false;
-    activeScanCancel = () => {
-      isCancelled = true;
-    };
-
-    const callbacks: ScanCallbacks = {
-      onProgress: (progress: ScanProgress) => {
-        if (!isCancelled) {
-          sendProgressUpdate(webContents, progress);
-        }
-      },
-      isCancelled: () => isCancelled
-    };
-
-    try {
-      const result = await scanSlow(parsedFolder, callbacks);
-
-      if (isCancelled) {
-        webContents.send("scan:update", { type: "cancelled" });
-        return null;
-      }
-
-      webContents.send("scan:update", { type: "complete", result });
-      await logEvent("main", "scan.slow.completed", {
-        diagnostics: result.diagnostics,
-        elapsedMs: result.elapsedMs,
-        folder: parsedFolder,
-        groupCount: result.groups.length,
-        scannedFileCount: result.scannedFileCount,
-        warnings: result.warnings
-      });
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      webContents.send("scan:update", { type: "error", message });
-      await logEvent("main", "scan.slow.failed", { error, folder: parsedFolder }, "error");
       throw error;
     } finally {
       activeScanCancel = null;

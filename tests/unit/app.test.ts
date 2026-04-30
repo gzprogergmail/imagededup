@@ -27,27 +27,7 @@ const fastResult = {
 
 const warningResult = {
   ...fastResult,
-  diagnostics: {
-    counters: {
-      candidatePairs: 4,
-      matchedPairs: 1,
-      rejectedBySignature: 8,
-      skippedFastPassPairs: 0,
-      skippedMergedPairs: 1,
-      totalPairs: 15,
-      variantCacheHits: 3,
-      variantCacheMisses: 2,
-      variantComparisons: 21
-    },
-    phasesMs: {
-      candidateFilter: 12,
-      groupBuild: 1,
-      signatureBuild: 8,
-      similarityCompare: 51,
-      variantLoad: 18
-    }
-  },
-  mode: "slow" as const,
+  mode: "fast" as const,
   warnings: ["Skipped unreadable image"]
 };
 
@@ -62,7 +42,6 @@ describe("renderer app", () => {
         <input id="folder-input" />
         <button id="browse-button">Browse</button>
         <button id="fast-button">Start Fast Pass</button>
-        <button id="slow-button">Start Slow Pass</button>
         <button id="cancel-button">Cancel</button>
         <div id="activity-count"></div>
         <ol id="activity-list"></ol>
@@ -89,8 +68,7 @@ describe("renderer app", () => {
           getFolderPreview: vi.fn().mockResolvedValue(previewResult),
           getLogInfo: vi.fn().mockResolvedValue({ directory: "C:\\logs" }),
           logEvent: vi.fn().mockResolvedValue(undefined),
-          startFastPass: vi.fn().mockResolvedValue(fastResult),
-          startSlowPass: vi.fn().mockResolvedValue(warningResult)
+          startFastPass: vi.fn().mockResolvedValue(fastResult)
         }
       })
     });
@@ -157,15 +135,14 @@ describe("renderer app", () => {
   });
 
   it("surfaces warnings returned by a scan", async () => {
+    vi.mocked(window.imageDedupApi.startFastPass).mockResolvedValueOnce(warningResult);
     await import("../../src/renderer/app");
     (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
-    fireEvent.click(document.getElementById("slow-button") as HTMLButtonElement);
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
 
     await waitFor(() => {
       expect(document.getElementById("status-badge")?.textContent).toContain("Attention");
       expect(document.getElementById("results-panel")?.textContent).toContain("Skipped unreadable image");
-      expect(document.getElementById("results-panel")?.textContent).toContain("Performance profile");
-      expect(document.getElementById("activity-list")?.textContent).toContain("Slow-pass hotspot");
     });
   });
 
@@ -183,7 +160,7 @@ describe("renderer app", () => {
 
   it("shows a validation error when no folder is provided", async () => {
     await import("../../src/renderer/app");
-    fireEvent.click(document.getElementById("slow-button") as HTMLButtonElement);
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
 
     await waitFor(() => {
       expect(document.getElementById("status-line")?.textContent).toContain("Enter a folder path first.");
@@ -219,12 +196,12 @@ describe("renderer app", () => {
         listeners.push(callback);
         return unsubscribe;
       }),
-      startSlowPass: vi.fn().mockResolvedValue(null)
+      startFastPass: vi.fn().mockResolvedValue(null)
     });
 
     await import("../../src/renderer/app");
     (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
-    fireEvent.click(document.getElementById("slow-button") as HTMLButtonElement);
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
 
     listeners[0]?.({
       currentFile: 1,
@@ -245,7 +222,7 @@ describe("renderer app", () => {
     });
 
     await waitFor(() => {
-      expect(document.getElementById("status-line")?.textContent).toContain("Slow Pass: comparing matches 39%");
+      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass: comparing matches 39%");
       expect(document.getElementById("progress-text")?.textContent).toContain("75/190 comparisons");
       expect(document.getElementById("progress-text")?.textContent).toContain("~2m remaining");
       expect(document.getElementById("progress-percent")?.textContent).toBe("39%");
@@ -287,18 +264,18 @@ describe("renderer app", () => {
         listeners.push(callback);
         return () => undefined;
       }),
-      startSlowPass: vi.fn().mockResolvedValue(null)
+      startFastPass: vi.fn().mockResolvedValue(null)
     });
 
     await import("../../src/renderer/app");
     (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
-    fireEvent.click(document.getElementById("slow-button") as HTMLButtonElement);
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
     fireEvent.keyDown(window, { key: "Escape" });
     listeners[0]?.({ type: "cancelled" });
 
     await waitFor(() => {
       expect(window.imageDedupApi.cancelScan).toHaveBeenCalled();
-      expect(document.getElementById("status-line")?.textContent).toContain("Slow Pass cancelled.");
+      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass cancelled.");
       expect(document.getElementById("status-badge")?.textContent).toContain("Attention");
       expect(document.getElementById("cancel-button")?.getAttribute("data-visible")).toBe("false");
     });

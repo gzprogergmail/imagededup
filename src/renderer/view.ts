@@ -1,4 +1,4 @@
-import type { DetectionResult, DuplicateGroup, FolderPreview, ScanDiagnostics } from "../shared/types";
+import type { DetectionResult, DuplicateGroup, FolderPreview } from "../shared/types";
 
 export function renderSummaryEmptyMarkup(): string {
   return `
@@ -9,10 +9,6 @@ export function renderSummaryEmptyMarkup(): string {
     <article class="summary-card summary-placeholder">
       <div class="summary-value">Fast Pass first</div>
       <div class="summary-label">Use the faster hash-based pass to confirm the folder looks right.</div>
-    </article>
-    <article class="summary-card summary-placeholder">
-      <div class="summary-value">Slow Pass next</div>
-      <div class="summary-label">Use the slower similarity pass when you need transformed matches.</div>
     </article>
   `;
 }
@@ -146,11 +142,8 @@ export function renderFolderPreviewMarkup(preview: FolderPreview): string {
 }
 
 export function renderResultsMarkup(result: DetectionResult): string {
-  const diagnostics = result.diagnostics ? renderDiagnosticsMarkup(result.diagnostics) : "";
-
   if (result.groups.length === 0) {
     return `
-      ${diagnostics}
       <article class="group-card result-empty">
         <div class="results-header">
           <strong>No duplicate groups were found.</strong>
@@ -180,7 +173,6 @@ export function renderResultsMarkup(result: DetectionResult): string {
         Filenames are shown first so larger scans stay readable. Full folders stay available as secondary text.
       </div>
     </article>
-    ${diagnostics}
     ${warnings}
     ${result.groups.map(renderGroupMarkup).join("")}
   `;
@@ -274,51 +266,6 @@ function renderFileMarkup(file: string, representativeDirectory: string): string
         </div>
       </div>
     </li>
-  `;
-}
-
-function renderDiagnosticsMarkup(diagnostics: ScanDiagnostics): string {
-  const phaseItems = [
-    { label: "Signatures", value: diagnostics.phasesMs.signatureBuild },
-    { label: "Candidate Filter", value: diagnostics.phasesMs.candidateFilter },
-    { label: "Variant Load", value: diagnostics.phasesMs.variantLoad },
-    { label: "SSIM", value: diagnostics.phasesMs.similarityCompare },
-    { label: "Group Build", value: diagnostics.phasesMs.groupBuild }
-  ];
-  const counterItems = [
-    { label: "Total pairs", value: diagnostics.counters.totalPairs },
-    { label: "Fast-pass skips", value: diagnostics.counters.skippedFastPassPairs },
-    { label: "Merged skips", value: diagnostics.counters.skippedMergedPairs },
-    { label: "Rejected early", value: diagnostics.counters.rejectedBySignature },
-    { label: "Candidate pairs", value: diagnostics.counters.candidatePairs },
-    { label: "Matches", value: diagnostics.counters.matchedPairs },
-    { label: "SSIM calls", value: diagnostics.counters.variantComparisons },
-    { label: "Variant cache", value: `${diagnostics.counters.variantCacheHits} hits / ${diagnostics.counters.variantCacheMisses} misses` }
-  ];
-
-  return `
-    <article class="group-card diagnostics-card">
-      <div class="results-header">
-        <strong>Performance profile</strong>
-        <span class="pill">measured</span>
-      </div>
-      <div class="diagnostics-grid">
-        ${phaseItems.map((item) => `
-          <div class="diagnostic-chip">
-            <span class="diagnostic-label">${escapeHtml(item.label)}</span>
-            <strong class="diagnostic-value">${escapeHtml(`${item.value} ms`)}</strong>
-          </div>
-        `).join("")}
-      </div>
-      <div class="diagnostics-list">
-        ${counterItems.map((item) => `
-          <div class="diagnostic-row">
-            <span class="diagnostic-label">${escapeHtml(item.label)}</span>
-            <span class="diagnostic-value">${escapeHtml(String(item.value))}</span>
-          </div>
-        `).join("")}
-      </div>
-    </article>
   `;
 }
 

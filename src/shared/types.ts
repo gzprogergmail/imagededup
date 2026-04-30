@@ -1,4 +1,4 @@
-export type DetectionMode = "fast" | "slow";
+export type DetectionMode = "fast";
 
 export interface DuplicateGroup {
   id: string;
@@ -9,33 +9,11 @@ export interface DuplicateGroup {
   score?: number;
 }
 
-export interface ScanDiagnostics {
-  counters: {
-    candidatePairs: number;
-    matchedPairs: number;
-    rejectedBySignature: number;
-    skippedFastPassPairs: number;
-    skippedMergedPairs: number;
-    totalPairs: number;
-    variantCacheHits: number;
-    variantCacheMisses: number;
-    variantComparisons: number;
-  };
-  phasesMs: {
-    candidateFilter: number;
-    groupBuild: number;
-    signatureBuild: number;
-    similarityCompare: number;
-    variantLoad: number;
-  };
-}
-
 export interface DetectionResult {
   mode: DetectionMode;
   library: string;
   scannedFileCount: number;
   elapsedMs: number;
-  diagnostics?: ScanDiagnostics;
   groups: DuplicateGroup[];
   warnings: string[];
 }

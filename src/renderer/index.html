@@ -13,8 +13,7 @@
           <p class="eyebrow">Local Duplicate Detection</p>
           <h1>ImageDedup</h1>
           <p class="lede">
-            Fast Pass quickly catches obvious duplicates. Slow Pass takes longer and checks rotated,
-            resized, tinted, and otherwise transformed near-duplicates from the same source.
+            Fast Pass quickly catches exact duplicates and hash-matched copies.
           </p>
         </div>
         <div class="hero-meta">
@@ -42,15 +41,13 @@
             />
           </label>
           <p class="field-help" id="folder-help">
-            Start with Fast Pass for a quick sweep, then use Slow Pass when you want to catch
-            transformed matches.
+            Start Fast Pass to sweep the folder for duplicate images.
           </p>
           <p class="selection-preview" data-visible="false" id="selected-folder"></p>
           <section class="folder-preview" data-state="empty" id="folder-preview"></section>
           <div class="actions">
             <button id="browse-button" type="button" class="btn-secondary">Browse</button>
             <button id="fast-button" type="button" class="btn-primary">Start Fast Pass</button>
-            <button id="slow-button" type="button" class="btn-primary">Start Slow Pass</button>
             <button id="cancel-button" type="button" class="btn-danger" data-visible="false" disabled>Cancel Scan</button>
           </div>
           <div class="progress-wrap">

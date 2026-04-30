@@ -5,19 +5,18 @@ import { readFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-import { scanFast, scanSlow } from "../../src/main/core/dedupService";
+import { scanFast } from "../../src/main/core/dedupService";
 
-test("fast and slow pass run end-to-end in the built renderer", async ({ page }) => {
+test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
   const { generateFixtureSet } = await import("../../scripts/image-fixtures.mjs");
   const fixtureDir = await mkdtemp(join(tmpdir(), "imagededup-e2e-"));
   await generateFixtureSet(fixtureDir);
   const fastResult = await scanFast(fixtureDir);
-  const slowResult = await scanSlow(fixtureDir);
   const { serverUrl, stop } = await startStaticServer(resolve("dist/renderer"));
 
   try {
     await page.addInitScript(
-      ({ fastResult: nextFastResult, slowResult: nextSlowResult }) => {
+      ({ fastResult: nextFastResult }) => {
         (window as Window & { imageDedupApi: unknown }).imageDedupApi = {
           browseFolder: async () => "",
           cancelScan: async () => undefined,
@@ -29,11 +28,10 @@ test("fast and slow pass run end-to-end in the built renderer", async ({ page })
           getLogInfo: async () => ({ directory: "C:\\logs" }),
           logEvent: async () => undefined,
           onScanUpdate: undefined,
-          startFastPass: async () => nextFastResult,
-          startSlowPass: async () => nextSlowResult
+          startFastPass: async () => nextFastResult
         };
       },
-      { fastResult, slowResult }
+      { fastResult }
     );
 
     await page.goto(serverUrl);
@@ -46,11 +44,6 @@ test("fast and slow pass run end-to-end in the built renderer", async ({ page })
     await expect(page.getByText("base.png").first()).toBeVisible();
     await expect(page.getByText(/Fast Pass finished with/)).toBeVisible();
     await expect(page.getByText("Review duplicate groups")).toBeVisible();
-
-    await page.getByRole("button", { name: "Start Slow Pass" }).click();
-    await expect(page.locator("#status-line")).toContainText("Slow Pass finished");
-    await expect(page.getByText("slow-rotated-12.png").first()).toBeVisible();
-    await expect(page.getByText("Performance profile")).toBeVisible();
   } finally {
     await stop();
   }

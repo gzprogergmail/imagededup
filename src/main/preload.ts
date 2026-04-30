@@ -15,6 +15,5 @@ contextBridge.exposeInMainWorld("imageDedupApi", {
   },
   openFile: (filePath: string) => ipcRenderer.invoke("file:open", filePath) as Promise<void>,
   openFolder: (filePath: string) => ipcRenderer.invoke("folder:open", filePath) as Promise<void>,
-  startFastPass: (folder: string) => ipcRenderer.invoke("scan:fast", folder),
-  startSlowPass: (folder: string) => ipcRenderer.invoke("scan:slow", folder)
+  startFastPass: (folder: string) => ipcRenderer.invoke("scan:fast", folder)
 });

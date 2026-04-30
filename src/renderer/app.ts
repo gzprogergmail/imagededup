@@ -17,7 +17,6 @@ type StatusTone = "idle" | "running" | "success" | "warning" | "error";
 const folderInput = mustElement<HTMLInputElement>("folder-input");
 const browseButton = mustElement<HTMLButtonElement>("browse-button");
 const fastButton = mustElement<HTMLButtonElement>("fast-button");
-const slowButton = mustElement<HTMLButtonElement>("slow-button");
 const cancelButton = mustElement<HTMLButtonElement>("cancel-button");
 const activityCount = mustElement<HTMLElement>("activity-count");
 const activityList = mustElement<HTMLOListElement>("activity-list");
@@ -34,7 +33,6 @@ const resultsPanel = mustElement<HTMLDivElement>("results-panel");
 const activityEntries: Array<{ time: string; text: string }> = [];
 
 let isScanning = false;
-let currentScanMode: "fast" | "slow" | null = null;
 let folderPreviewRequestId = 0;
 let folderPreviewTimer: number | null = null;
 let unsubscribeScanUpdates: (() => void) | null = null;
@@ -72,7 +70,7 @@ folderInput.addEventListener("keydown", (event) => {
   }
 
   event.preventDefault();
-  void runPass("fast");
+  void runPass();
 });
 
 window.addEventListener("keydown", (event) => {
@@ -85,11 +83,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 fastButton.addEventListener("click", async () => {
-  await runPass("fast");
-});
-
-slowButton.addEventListener("click", async () => {
-  await runPass("slow");
+  await runPass();
 });
 
 cancelButton.addEventListener("click", async () => {
@@ -122,14 +116,14 @@ function updateProgressUI(progress: ScanProgress): void {
 
   // Update status line with current file
   if (progress.currentPath) {
-    const fileName = progress.currentPath.split(/[/\\]/).pop() || progress.currentPath;
+    const fileName = progress.currentPath.split(/[\/\\]/).pop() || progress.currentPath;
     updateStatus(
-      `${labelForMode(currentScanMode!)}: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"}) - ${shortenMiddle(fileName, 40)}`,
+      `Fast Pass: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"}) - ${shortenMiddle(fileName, 40)}`,
       "running"
     );
   } else {
     updateStatus(
-      `${labelForMode(currentScanMode!)}: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"})`,
+      `Fast Pass: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"})`,
       "running"
     );
   }
@@ -155,7 +149,6 @@ function formatProgressText(progress: ScanProgress): string {
 
 function handleScanComplete(result: DetectionResult): void {
   isScanning = false;
-  currentScanMode = null;
 
   if (unsubscribeScanUpdates) {
     unsubscribeScanUpdates();
@@ -165,21 +158,13 @@ function handleScanComplete(result: DetectionResult): void {
   renderSummary(result);
   renderResults(result);
   updateStatus(
-    `${labelForMode(result.mode)} finished in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
+    `Fast Pass finished in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
     result.warnings.length === 0 ? "success" : "warning"
   );
   recordActivity(
-    `${labelForMode(result.mode)} finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
+    `Fast Pass finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
   );
-  if (result.diagnostics) {
-    const hottestPhase = Object.entries(result.diagnostics.phasesMs)
-      .sort((left, right) => right[1] - left[1])[0];
-    if (hottestPhase) {
-      recordActivity(`Slow-pass hotspot: ${formatPhaseLabel(hottestPhase[0])} took ${hottestPhase[1]} ms.`);
-    }
-  }
   void logUiEvent("scan.completed", {
-    diagnostics: result.diagnostics,
     elapsedMs: result.elapsedMs,
     groupCount: result.groups.length,
     mode: result.mode,
@@ -187,13 +172,11 @@ function handleScanComplete(result: DetectionResult): void {
     warnings: result.warnings
   });
 
-  setBusy(false, result.mode);
+  setBusy(false);
 }
 
 function handleScanError(message: string): void {
-  const failedMode = currentScanMode ?? "fast";
   isScanning = false;
-  currentScanMode = null;
 
   if (unsubscribeScanUpdates) {
     unsubscribeScanUpdates();
@@ -202,35 +185,33 @@ function handleScanError(message: string): void {
 
   summaryGrid.innerHTML = renderSummaryEmptyMarkup();
   resultsPanel.innerHTML = renderErrorMarkup(message);
-  updateStatus(`${labelForMode(failedMode)} failed: ${message}`, "error");
-  recordActivity(`${labelForMode(failedMode)} failed: ${message}`);
-  void logUiEvent("scan.failed", { error: message, mode: failedMode }, "error");
+  updateStatus(`Fast Pass failed: ${message}`, "error");
+  recordActivity(`Fast Pass failed: ${message}`);
+  void logUiEvent("scan.failed", { error: message, mode: "fast" }, "error");
 
-  setBusy(false, failedMode);
+  setBusy(false);
 }
 
 function handleScanCancelled(): void {
-  const cancelledMode = currentScanMode ?? "fast";
   isScanning = false;
-  currentScanMode = null;
 
   if (unsubscribeScanUpdates) {
     unsubscribeScanUpdates();
     unsubscribeScanUpdates = null;
   }
 
-  updateStatus(`${labelForMode(cancelledMode)} cancelled.`, "warning");
-  setBusy(false, cancelledMode);
+  updateStatus("Fast Pass cancelled.", "warning");
+  setBusy(false);
 }
 
-async function runPass(mode: "fast" | "slow"): Promise<void> {
+async function runPass(): Promise<void> {
   const folder = folderInput.value.trim();
   if (!folder) {
     folderInput.setAttribute("aria-invalid", "true");
     folderInput.focus();
     updateStatus("Enter a folder path first.", "error");
-    recordActivity(`${labelForMode(mode)} blocked because no folder was provided.`);
-    void logUiEvent("scan.blocked.empty_folder", { mode }, "warn");
+    recordActivity("Fast Pass blocked because no folder was provided.");
+    void logUiEvent("scan.blocked.empty_folder", { mode: "fast" }, "warn");
     return;
   }
 
@@ -243,20 +224,17 @@ async function runPass(mode: "fast" | "slow"): Promise<void> {
   unsubscribeScanUpdates = supportsScanUpdates ? window.imageDedupApi.onScanUpdate(handleScanUpdate) : null;
 
   isScanning = true;
-  currentScanMode = mode;
 
   folderInput.removeAttribute("aria-invalid");
   syncSelectedFolder(folder);
-  renderPendingScanState(mode, folder);
-  setBusy(true, mode);
-  updateStatus(`${labelForMode(mode)} is starting...`, "running");
-  recordActivity(`${labelForMode(mode)} started for ${shortenMiddle(folder, 60)}.`);
-  void logUiEvent("scan.started", { folder, mode });
+  renderPendingScanState(folder);
+  setBusy(true);
+  updateStatus("Fast Pass is starting...", "running");
+  recordActivity(`Fast Pass started for ${shortenMiddle(folder, 60)}.`);
+  void logUiEvent("scan.started", { folder, mode: "fast" });
 
   try {
-    const result = mode === "fast"
-      ? await window.imageDedupApi.startFastPass(folder) as DetectionResult | null
-      : await window.imageDedupApi.startSlowPass(folder) as DetectionResult | null;
+    const result = await window.imageDedupApi.startFastPass(folder) as DetectionResult | null;
 
     if (!supportsScanUpdates) {
       if (result) {
@@ -276,17 +254,16 @@ async function runPass(mode: "fast" | "slow"): Promise<void> {
 }
 
 function renderSummary(result: DetectionResult): void {
-  summaryGrid.innerHTML = renderSummaryMarkup(result, labelForMode(result.mode));
+  summaryGrid.innerHTML = renderSummaryMarkup(result, "Fast Pass");
 }
 
 function renderResults(result: DetectionResult): void {
   resultsPanel.innerHTML = renderResultsMarkup(result);
 }
 
-function renderPendingScanState(mode: "fast" | "slow", folder: string): void {
-  const passLabel = labelForMode(mode);
-  summaryGrid.innerHTML = renderSummaryLoadingMarkup(passLabel);
-  resultsPanel.innerHTML = renderResultsLoadingMarkup(passLabel, folder);
+function renderPendingScanState(folder: string): void {
+  summaryGrid.innerHTML = renderSummaryLoadingMarkup("Fast Pass");
+  resultsPanel.innerHTML = renderResultsLoadingMarkup("Fast Pass", folder);
 }
 
 async function requestCancelScan(): Promise<void> {
@@ -298,10 +275,6 @@ async function requestCancelScan(): Promise<void> {
   updateStatus("Scan cancelled by user.", "warning");
   recordActivity("Scan cancelled.");
   void logUiEvent("scan.cancelled");
-}
-
-function labelForMode(mode: "fast" | "slow"): string {
-  return mode === "fast" ? "Fast Pass" : "Slow Pass";
 }
 
 function labelForPhase(phase: ScanProgress["phase"]): string {
@@ -317,27 +290,10 @@ function labelForPhase(phase: ScanProgress["phase"]): string {
   }
 }
 
-function formatPhaseLabel(phase: string): string {
-  switch (phase) {
-    case "signatureBuild":
-      return "signature build";
-    case "candidateFilter":
-      return "candidate filter";
-    case "variantLoad":
-      return "variant loading";
-    case "similarityCompare":
-      return "SSIM comparison";
-    case "groupBuild":
-      return "group build";
-    default:
-      return phase;
-  }
-}
 
-function setBusy(busy: boolean, mode: "fast" | "slow"): void {
+function setBusy(busy: boolean): void {
   browseButton.disabled = false;
   fastButton.disabled = busy;
-  slowButton.disabled = busy;
   folderInput.disabled = false;
   cancelButton.disabled = !busy;
   cancelButton.dataset.visible = String(busy);
@@ -346,10 +302,9 @@ function setBusy(busy: boolean, mode: "fast" | "slow"): void {
   progressPercent.dataset.visible = String(busy);
 
   if (busy) {
-    (mode === "fast" ? fastButton : slowButton).textContent = `${labelForMode(mode)} Running`;
+    fastButton.textContent = "Fast Pass Running";
   } else {
     fastButton.textContent = "Start Fast Pass";
-    slowButton.textContent = "Start Slow Pass";
     // Reset progress display
     progressPercent.textContent = "0%";
     progressText.textContent = "";
