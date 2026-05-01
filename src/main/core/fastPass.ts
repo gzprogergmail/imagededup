@@ -21,11 +21,29 @@ const SAMPLE_PIXELS = SAMPLE_SIZE * SAMPLE_SIZE;
 
 /**
  * Maximum Hamming distance (in bits out of 64) at which two pHashes are
- * considered near-duplicates. Threshold of 10 catches same-photo variants
- * (recompressed, slightly brightened, etc.) while avoiding false positives
- * on visually distinct images.
+ * considered near-duplicates.
+ *
+ * A lower default (5) trades some recall for substantially fewer
+ * false-positive chains on large, heterogeneous folders.
  */
-export const HAMMING_THRESHOLD = 10;
+export const HAMMING_THRESHOLD = 5;
+
+const MIN_HAMMING_THRESHOLD = 0;
+const MAX_HAMMING_THRESHOLD = 16;
+
+function resolveHammingThreshold(defaultThreshold: number): number {
+  const raw = process.env.IMAGEDEDUP_FASTPASS_HAMMING_THRESHOLD;
+  if (!raw) {
+    return defaultThreshold;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return defaultThreshold;
+  }
+
+  return Math.max(MIN_HAMMING_THRESHOLD, Math.min(MAX_HAMMING_THRESHOLD, parsed));
+}
 
 /** Yield one tick to the event loop so IPC/progress messages can be dispatched. */
 function yieldToEventLoop(): Promise<void> {
@@ -199,6 +217,7 @@ export async function runFastPass(
 ): Promise<DetectionResult> {
   const startedAt = performance.now();
   const semaphore = new Semaphore(CONCURRENCY);
+  const effectiveThreshold = resolveHammingThreshold(hammingThreshold);
 
   // ── Phase 1: Discover, hash, and match concurrently ──────────────────────
   // Files are consumed one-by-one from the async iterable (stream or array).
@@ -244,7 +263,7 @@ export async function runFastPass(
         // Match immediately against already-indexed hashes.
         const matchedRoots = [...new Set(
           hashes
-            .flatMap((hash) => mihIndex.query(hash, hammingThreshold))
+            .flatMap((hash) => mihIndex.query(hash, effectiveThreshold))
             .map((match) => unionFind.find(match.filePath))
         )];
 

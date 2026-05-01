@@ -40,6 +40,8 @@ describe("renderer app", () => {
     const dom = new JSDOM(`
       <main>
         <input id="folder-input" />
+        <input id="threshold-input" type="range" min="0" max="16" value="5" />
+        <span id="threshold-display">5</span>
         <button id="browse-button">Browse</button>
         <button id="fast-button">Start Fast Pass</button>
         <button id="cancel-button">Cancel</button>
@@ -129,7 +131,7 @@ describe("renderer app", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(window.imageDedupApi.startFastPass).toHaveBeenCalledWith("C:\\fixtures");
+      expect(window.imageDedupApi.startFastPass).toHaveBeenCalledWith("C:\\fixtures", expect.any(Number));
       expect(document.getElementById("status-line")?.textContent).toContain("finished");
     });
   });

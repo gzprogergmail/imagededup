@@ -197,18 +197,25 @@ export function renderResultsMarkup(result: DetectionResult): string {
       ${result.warnings.map((warning) => `<div class="group-meta">${escapeHtml(warning)}</div>`).join("")}
     </article>
   `;
+
+  const sortedGroups = [...result.groups].sort((a, b) => b.files.length - a.files.length);
+  const totalRemovable = sortedGroups.reduce((sum, g) => sum + g.files.length - 1, 0);
+
   return `
     <article class="group-card result-overview">
       <div class="results-header">
         <strong>Review duplicate groups</strong>
-        <span class="pill">${result.groups.length} groups</span>
+        <div class="overview-stats">
+          <span class="pill">${result.groups.length} group${result.groups.length === 1 ? "" : "s"}</span>
+          <span class="pill pill-removable">${totalRemovable} potentially removable</span>
+        </div>
       </div>
       <div class="group-meta">
-        Filenames are shown first so larger scans stay readable. Full folders stay available as secondary text.
+        Groups sorted by size — largest first. Filenames are shown first so larger scans stay readable.
       </div>
     </article>
     ${warnings}
-    ${result.groups.map(renderGroupMarkup).join("")}
+    ${sortedGroups.map(renderGroupMarkup).join("")}
   `;
 }
 
@@ -232,12 +239,33 @@ export function renderGroupMarkup(group: DuplicateGroup): string {
     ? "Path unavailable"
     : shortenMiddle(representativeDirectory, 72);
 
-  // Create thumbnail for representative image
-  const representativeThumbnail = createThumbnailHtml(group.representative);
+  const removable = group.files.length - 1;
+
+  // Comparison thumbnail grid — all files shown side-by-side
+  const thumbGrid = group.files.map((file) => `
+    <button
+      class="group-thumb-item"
+      title="${escapeHtml(fileNameForPath(file))}"
+      onclick="window.imageDedupApi.openFile('${escapeHtml(file)}')"
+      type="button"
+    >
+      ${createThumbnailHtml(file, "group-thumb-image")}
+      <span class="group-thumb-name">${escapeHtml(fileNameForPath(file))}</span>
+    </button>
+  `).join("");
+
+  const fileListItems = group.files.map((file) => renderFileMarkup(file, representativeDirectory)).join("");
+  const useCollapse = group.files.length > 4;
+  const fileListHtml = useCollapse
+    ? `<details class="group-files-collapse">
+        <summary class="group-files-summary">▸ Show all ${group.files.length} files</summary>
+        <ol class="group-files">${fileListItems}</ol>
+      </details>`
+    : `<ol class="group-files">${fileListItems}</ol>`;
 
   return `
     <article class="group-card" data-group-id="${escapeHtml(group.id)}">
-      <div class="group-title">
+      <div class="group-header">
         <div class="group-heading">
           <strong class="group-file-name" title="${escapeHtml(group.representative)}">
             ${escapeHtml(representativeName)}
@@ -246,15 +274,15 @@ export function renderGroupMarkup(group: DuplicateGroup): string {
             ${escapeHtml(representativePathLabel)}
           </div>
         </div>
-        ${score}
+        <div class="group-stats-row">
+          ${score}
+          <span class="pill pill-count">${group.files.length} files</span>
+          <span class="pill pill-removable">${removable} removable</span>
+        </div>
       </div>
-      <div class="group-meta">${escapeHtml(group.evidence)} • ${group.files.length} duplicates</div>
-      <div class="group-thumbnail-preview">
-        ${representativeThumbnail}
-      </div>
-      <ol class="group-files">
-        ${group.files.map((file) => renderFileMarkup(file, representativeDirectory)).join("")}
-      </ol>
+      <div class="group-meta">${escapeHtml(group.evidence)}</div>
+      <div class="group-thumb-strip">${thumbGrid}</div>
+      ${fileListHtml}
       <div class="group-actions">
         <button class="btn-secondary btn-sm" onclick="window.imageDedupApi.openFolder('${escapeHtml(group.representative)}')">
           Open Folder
@@ -297,6 +325,7 @@ function renderFileMarkup(file: string, representativeDirectory: string): string
         <div class="group-file-actions">
           <button class="btn-secondary btn-sm" onclick="window.imageDedupApi.openFile('${escapeHtml(file)}')">Open</button>
           <button class="btn-secondary btn-sm" onclick="window.imageDedupApi.openFolder('${escapeHtml(file)}')">Show in Folder</button>
+          <button class="btn-secondary btn-sm btn-copy" onclick="navigator.clipboard.writeText('${escapeHtml(file)}').catch(()=>{})" title="Copy full path">Copy Path</button>
         </div>
       </div>
     </li>

@@ -16,6 +16,8 @@ import {
 type StatusTone = "idle" | "running" | "success" | "warning" | "error";
 
 const folderInput = mustElement<HTMLInputElement>("folder-input");
+const thresholdInput = mustElement<HTMLInputElement>("threshold-input");
+const thresholdDisplay = mustElement<HTMLElement>("threshold-display");
 const browseButton = mustElement<HTMLButtonElement>("browse-button");
 const fastButton = mustElement<HTMLButtonElement>("fast-button");
 const cancelButton = mustElement<HTMLButtonElement>("cancel-button");
@@ -63,6 +65,10 @@ folderInput.addEventListener("input", () => {
   folderInput.removeAttribute("aria-invalid");
   syncSelectedFolder(folderInput.value.trim());
   queueFolderPreview(folderInput.value.trim());
+});
+
+thresholdInput.addEventListener("input", () => {
+  thresholdDisplay.textContent = thresholdInput.value;
 });
 
 folderInput.addEventListener("keydown", (event) => {
@@ -237,7 +243,7 @@ async function runPass(): Promise<void> {
   void logUiEvent("scan.started", { folder, mode: "fast" });
 
   try {
-    const result = await window.imageDedupApi.startFastPass(folder) as DetectionResult | null;
+    const result = await window.imageDedupApi.startFastPass(folder, Number(thresholdInput.value)) as DetectionResult | null;
 
     if (!supportsScanUpdates) {
       if (result) {

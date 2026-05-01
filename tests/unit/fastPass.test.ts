@@ -189,14 +189,12 @@ describe("runFastPass", () => {
   });
 
   it("links transitive near-duplicates (A≈B, B≈C → A,B,C in one group)", async () => {
-    // A and B are within threshold; B and C are within threshold; A and C may be at the edge.
+    // A and B are within threshold; B and C are within threshold; A and C are over threshold,
+    // so transitive linking is required to place all three in one group.
     const A = "0000000000000000"; // reference
     const B = "000000000000001f"; // dist(A,B)=5 ✓
-    const C = "00000000000003e0"; // dist(B,C): B=0x1f=0001_1111, C=0x3e0=0011_1110_0000
-    // dist(B="000000000000001f", C="00000000000003e0"):
-    //   nibble 13: B=0x0 vs C=0x3 → XOR=3 → 2 bits
-    //   nibble 14: B=0x1 vs C=0xe → XOR=0xf → 4 bits
-    //   nibble 15: B=0xf vs C=0x0 → XOR=0xf → 4 bits  → total 10 bits ✓
+    const C = "000000000000007f"; // dist(A,C)=7, dist(B,C)=2
+    expect(hammingDistance(A, C)).toBeGreaterThan(HAMMING_THRESHOLD);
     expect(hammingDistance(B, C)).toBeLessThanOrEqual(HAMMING_THRESHOLD);
 
     const files = [

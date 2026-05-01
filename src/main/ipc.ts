@@ -61,9 +61,10 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle("scan:fast", async (event, folder) => {
+  ipcMain.handle("scan:fast", async (event, folder, threshold) => {
     const parsedFolder = folderSchema.parse(folder);
-    await logEvent("main", "scan.fast.started", { folder: parsedFolder });
+    const parsedThreshold = typeof threshold === "number" ? Math.max(0, Math.min(16, Math.round(threshold))) : undefined;
+    await logEvent("main", "scan.fast.started", { folder: parsedFolder, hammingThreshold: parsedThreshold });
 
     const webContents = event.sender;
 
@@ -87,7 +88,7 @@ export function registerIpcHandlers(): void {
     };
 
     try {
-      const result = await scanFast(parsedFolder, callbacks);
+      const result = await scanFast(parsedFolder, callbacks, parsedThreshold);
 
       if (isCancelled) {
         webContents.send("scan:update", { type: "cancelled" });

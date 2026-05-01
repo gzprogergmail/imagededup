@@ -326,17 +326,17 @@ describe("MIHIndex", () => {
   it("respects the exact threshold boundary (dist=T included, dist=T+1 excluded)", () => {
     const idx = new MIHIndex();
     const base = "0000000000000000";
-    // 10 bits: 0x3ff → "00000000000003ff" → 0x3=2 bits, 0xff=8 bits → 10 bits ✓
-    const atThreshold = "00000000000003ff";
-    // 11 bits: 0x7ff → 0x7=3 bits, 0xff=8 bits → 11 bits ✓
-    const overThreshold = "00000000000007ff";
-    expect(hammingDistance(base, atThreshold)).toBe(10);
-    expect(hammingDistance(base, overThreshold)).toBe(11);
+    const atThreshold = (BigInt(1) << BigInt(HAMMING_THRESHOLD)) - BigInt(1);
+    const overThreshold = (BigInt(1) << BigInt(HAMMING_THRESHOLD + 1)) - BigInt(1);
+    const atThresholdHash = atThreshold.toString(16).padStart(16, "0");
+    const overThresholdHash = overThreshold.toString(16).padStart(16, "0");
+    expect(hammingDistance(base, atThresholdHash)).toBe(HAMMING_THRESHOLD);
+    expect(hammingDistance(base, overThresholdHash)).toBe(HAMMING_THRESHOLD + 1);
 
     idx.insert(base, "/img/base.png");
 
-    expect(idx.query(atThreshold, HAMMING_THRESHOLD)).toHaveLength(1);
-    expect(idx.query(overThreshold, HAMMING_THRESHOLD)).toHaveLength(0);
+    expect(idx.query(atThresholdHash, HAMMING_THRESHOLD)).toHaveLength(1);
+    expect(idx.query(overThresholdHash, HAMMING_THRESHOLD)).toHaveLength(0);
   });
 });
 

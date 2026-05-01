@@ -12,13 +12,13 @@ export interface ScanCallbacks {
   isCancelled: () => boolean;
 }
 
-export async function scanFast(folder: string, callbacks?: ScanCallbacks): Promise<DetectionResult> {
+export async function scanFast(folder: string, callbacks?: ScanCallbacks, hammingThreshold?: number): Promise<DetectionResult> {
   await logEvent("scan", "fast.requested", { folder });
   const absoluteFolder = await validateFolder(folder);
 
   const result = callbacks
-    ? await runFastPassWithProgress(absoluteFolder, callbacks)
-    : await runFastPass(streamImages(absoluteFolder));
+    ? await runFastPassWithProgress(absoluteFolder, callbacks, hammingThreshold)
+    : await runFastPass(streamImages(absoluteFolder), undefined, hammingThreshold);
 
   await logEvent("scan", "fast.completed", {
     elapsedMs: result.elapsedMs,
@@ -40,7 +40,8 @@ export async function previewFolder(folder: string): Promise<FolderPreview> {
 
 async function runFastPassWithProgress(
   folder: string,
-  callbacks: ScanCallbacks
+  callbacks: ScanCallbacks,
+  hammingThreshold?: number
 ): Promise<DetectionResult> {
   const { ImghashProvider } = await import("./fastPass");
 
@@ -80,7 +81,7 @@ async function runFastPassWithProgress(
   const result = await runFastPass(
     streamImages(folder),
     new ImghashProvider(),
-    undefined,
+    hammingThreshold,
     (done, total) => {
       emitProgress("comparing", done, total);
     },
