@@ -1,9 +1,8 @@
 # ImageDedup
 
-ImageDedup is a local Electron desktop app for finding duplicate images in two passes:
+ImageDedup is a local Electron desktop app for finding duplicate images.
 
 - Fast pass: `imghash` perceptual hash lookup across 0, 90, 180, and 270 degree rotations with O(1) hashtable matching.
-- Slow pass: `ssim.js` similarity scoring over normalized, rotated, and center-cropped variants to catch stronger transformations from the same source.
 
 ## Stack
 
@@ -12,7 +11,6 @@ ImageDedup is a local Electron desktop app for finding duplicate images in two p
 - Vite
 - `sharp`
 - `imghash`
-- `ssim.js`
 - Vitest
 - Playwright
 

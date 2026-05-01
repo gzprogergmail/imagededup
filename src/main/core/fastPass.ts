@@ -47,25 +47,39 @@ const normTable: number[] = Array.from({ length: HASH_SIZE }, (_, u) =>
  * Compute a 64-bit perceptual DCT hash (pHash) over a 32×32 grayscale pixel buffer.
  * Takes the top-left 8×8 DCT coefficients, computes the mean (excluding DC at [0,0]),
  * and returns a 16-char hex string where bit[i]=1 iff coeff[i] >= mean.
+ *
+ * Uses a separable 2-pass DCT: O(H·N²+ H²·N) ≈ 10 240 ops vs the naive
+ * O(H²·N²) = 65 536 ops — a ~6× reduction in multiply-adds.
  */
 export function dctHash(pixels: Uint8Array): string {
   const n = SAMPLE_SIZE;
   const h = HASH_SIZE;
-  const dct = new Float64Array(h * h);
 
+  // Pass 1 — row DCT: T[x][v] = Σ_y pixels[x,y] · cosTable[v][y]
+  // Layout T[x * h + v] keeps each row's h coefficients contiguous.
+  const T = new Float64Array(n * h);
+  for (let x = 0; x < n; x++) {
+    const rowOffset = x * n;
+    for (let v = 0; v < h; v++) {
+      const cosV = cosTable[v]!;
+      let sum = 0;
+      for (let y = 0; y < n; y++) {
+        sum += pixels[rowOffset + y]! * cosV[y]!;
+      }
+      T[x * h + v] = sum;
+    }
+  }
+
+  // Pass 2 — column DCT: dct[u][v] = (nu·nv / n) · Σ_x cosTable[u][x] · T[x][v]
+  const dct = new Float64Array(h * h);
   for (let u = 0; u < h; u++) {
     const cosU = cosTable[u]!;
     const nu = normTable[u]!;
     for (let v = 0; v < h; v++) {
-      const cosV = cosTable[v]!;
       const nv = normTable[v]!;
       let sum = 0;
       for (let x = 0; x < n; x++) {
-        const cx = cosU[x]!;
-        const row = x * n;
-        for (let y = 0; y < n; y++) {
-          sum += pixels[row + y]! * cx * cosV[y]!;
-        }
+        sum += cosU[x]! * T[x * h + v];
       }
       dct[u * h + v] = (nu * nv * sum) / n;
     }

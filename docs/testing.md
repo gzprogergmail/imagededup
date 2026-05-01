@@ -2,14 +2,14 @@
 
 ## Unit
 
-- Vitest covers fast pass, slow pass, discovery, renderer view logic, renderer app wiring, and union-find.
+- Vitest covers fast pass, discovery, renderer view logic, renderer app wiring, and union-find.
 - Generated fixtures come from local SVG templates rendered with `sharp`.
 - Current enforced thresholds are 90%+ for statements, lines, and functions.
 
 ## End-to-End
 
 - Playwright launches Electron directly from the built main-process bundle.
-- The e2e flow fills the folder path, runs both passes, and checks visible results.
+- The e2e flow fills the folder path, runs the fast pass, and checks visible results.
 
 ## Performance
 

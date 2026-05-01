@@ -15,15 +15,8 @@
 - Stores hashes in a `Map<string, string>` so lookups are O(1).
 - Uses union-find to merge groups if multiple rotated hashes connect them.
 
-## Slow Pass
-
-- Uses `ssim.js`.
-- Builds normalized image variants with `sharp`.
-- Compares rotated and center-cropped variants to find stronger visual similarity.
-- Returns connected groups based on the best SSIM score per pair.
-
 ## UI
 
 - Plain TypeScript DOM renderer.
-- Folder input plus Browse, Fast Pass, and Slow Pass buttons.
+- Folder input plus Browse and Fast Pass buttons.
 - Summary cards and duplicate-group cards are rendered as HTML strings.
