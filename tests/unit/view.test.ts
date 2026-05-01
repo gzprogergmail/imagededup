@@ -6,6 +6,7 @@ import {
   renderFolderPreviewEmptyMarkup,
   renderFolderPreviewLoadingMarkup,
   renderFolderPreviewMarkup,
+  renderPartialResultsMarkup,
   renderResultsEmptyMarkup,
   renderResultsLoadingMarkup,
   renderGroupMarkup,
@@ -106,5 +107,52 @@ describe("renderer view", () => {
     const markup = renderErrorMarkup("Folder does not exist.");
     expect(markup).toContain("Pass failed");
     expect(markup).toContain("Folder does not exist.");
+  });
+
+  it("renders partial-results banner with groups", () => {
+    const groups = [
+      {
+        evidence: "hash-partial",
+        files: ["C:\\fixtures\\a.png", "C:\\fixtures\\b.png"],
+        id: "group-partial",
+        kind: "fast" as const,
+        representative: "C:\\fixtures\\a.png",
+        score: 0.95
+      }
+    ];
+    const markup = renderPartialResultsMarkup(groups, 10, 20);
+    expect(markup).toContain("Live results");
+    expect(markup).toContain("1 group so far");
+    expect(markup).toContain("Processed 10 of 20 images");
+    expect(markup).toContain("a.png");
+    expect(markup).not.toContain("No duplicate groups were found");
+    expect(markup).not.toContain("No groups found yet");
+  });
+
+  it("renders partial-results banner with no groups yet", () => {
+    const markup = renderPartialResultsMarkup([], 5, 20);
+    expect(markup).toContain("Live results");
+    expect(markup).toContain("0 groups so far");
+    expect(markup).toContain("Processed 5 of 20 images");
+    expect(markup).toContain("No groups found yet");
+    expect(markup).not.toContain("No duplicate groups were found");
+    expect(markup).not.toContain("Nothing to review yet");
+  });
+
+  it("renders plural group count in partial banner", () => {
+    const makeGroup = (id: string, fileA: string, fileB: string) => ({
+      evidence: "h",
+      files: [fileA, fileB],
+      id,
+      kind: "fast" as const,
+      representative: fileA,
+      score: 0.9
+    });
+    const groups = [
+      makeGroup("g1", "C:\\a.png", "C:\\b.png"),
+      makeGroup("g2", "C:\\c.png", "C:\\d.png")
+    ];
+    const markup = renderPartialResultsMarkup(groups, 15, 30);
+    expect(markup).toContain("2 groups so far");
   });
 });

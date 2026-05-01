@@ -4,10 +4,11 @@ import { resolve } from "node:path";
 import { logEvent } from "../logger";
 import { discoverImages, streamImages } from "./imageDiscovery";
 import { runFastPass } from "./fastPass";
-import type { ScanProgress, ImageRecord, DetectionResult, FolderPreview } from "../../shared/types";
+import type { ScanProgress, ImageRecord, DetectionResult, DuplicateGroup, FolderPreview } from "../../shared/types";
 
 export interface ScanCallbacks {
   onProgress: (progress: ScanProgress) => void;
+  onPartialGroups?: (groups: DuplicateGroup[], scannedSoFar: number, totalFiles: number) => void;
   isCancelled: () => boolean;
 }
 
@@ -94,7 +95,10 @@ async function runFastPassWithProgress(
       // Show live discovery count only while hashing has not started yet.
       if (hashedCount === 0) emitProgress("discovering", 0, discovered);
     },
-    callbacks.isCancelled
+    callbacks.isCancelled,
+    (groups, scannedSoFar, totalFiles) => {
+      callbacks.onPartialGroups?.(groups, scannedSoFar, totalFiles);
+    }
   );
 
   await logEvent("scan", "fast.timing", {

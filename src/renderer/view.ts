@@ -63,6 +63,40 @@ export function renderResultsEmptyMarkup(): string {
   `;
 }
 
+export function renderPartialResultsMarkup(
+  groups: import("../shared/types").DuplicateGroup[],
+  scannedSoFar: number,
+  totalFiles: number
+): string {
+  const banner = `
+    <article class="group-card result-pending">
+      <div class="results-header">
+        <strong>Live results — scan in progress</strong>
+        <span class="pill">${groups.length} group${groups.length === 1 ? "" : "s"} so far</span>
+      </div>
+      <div class="group-meta">
+        Processed ${scannedSoFar} of ${totalFiles} images. More groups may appear.
+      </div>
+    </article>
+  `;
+
+  if (groups.length === 0) {
+    return banner + `
+      <article class="group-card result-empty">
+        <div class="results-header">
+          <strong>No groups found yet</strong>
+          <span class="pill">scanning</span>
+        </div>
+        <div class="group-meta">
+          Duplicate groups will appear here as they are detected.
+        </div>
+      </article>
+    `;
+  }
+
+  return banner + groups.map(renderGroupMarkup).join("");
+}
+
 export function renderResultsLoadingMarkup(passLabel: string, folder: string): string {
   return `
     <article class="group-card result-pending">

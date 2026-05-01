@@ -39,4 +39,9 @@ export interface ScanProgress {
   estimatedTimeRemainingMs?: number;
 }
 
-export type ScanUpdate = ScanProgress | { type: "complete"; result: DetectionResult } | { type: "error"; message: string } | { type: "cancelled" };
+export type ScanUpdate =
+  | ScanProgress
+  | { type: "complete"; result: DetectionResult }
+  | { type: "error"; message: string }
+  | { type: "cancelled" }
+  | { type: "partial"; groups: DuplicateGroup[]; scannedSoFar: number; totalFiles: number };

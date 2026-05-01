@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { discoverImages } from "../../src/main/core/imageDiscovery";
 import { dctHash, runFastPass, HAMMING_THRESHOLD, type HashProvider } from "../../src/main/core/fastPass";
 import { hammingDistance } from "../../src/main/core/bkTree";
+import type { DuplicateGroup } from "../../src/shared/types";
 
 describe("dctHash", () => {
   it("returns a 16-character hex string", () => {
@@ -236,5 +237,104 @@ describe("runFastPass", () => {
 
     expect(calls[0]).toEqual([0, 5]);
     expect(calls[calls.length - 1]).toEqual([5, 5]);
+  });
+
+  it("calls onPartialGroups at least once and includes found duplicate groups", async () => {
+    const files = [
+      { path: "/img/a.png", basename: "a.png" },
+      { path: "/img/b.png", basename: "b.png" },
+      { path: "/img/c.png", basename: "c.png" },
+      { path: "/img/unique.png", basename: "unique.png" }
+    ];
+
+    const provider: HashProvider = {
+      getHashes: async (filePath) => {
+        if (filePath.endsWith("a.png") || filePath.endsWith("b.png") || filePath.endsWith("c.png")) {
+          return ["aabbccddeeff0011"];
+        }
+        return ["ffffffffffffffff"];
+      }
+    };
+
+    const partialCalls: Array<{ groups: DuplicateGroup[]; scannedSoFar: number; totalFiles: number }> = [];
+    const result = await runFastPass(
+      files,
+      provider,
+      HAMMING_THRESHOLD,
+      undefined, // onMatchProgress
+      undefined, // onHashProgress
+      undefined, // onDiscoverProgress
+      undefined, // isCancelled
+      (groups, scannedSoFar, totalFiles) => {
+        partialCalls.push({ groups: groups.map(g => ({ ...g, files: [...g.files] })), scannedSoFar, totalFiles });
+      }
+    );
+
+    expect(partialCalls.length).toBeGreaterThan(0);
+
+    // Every partial call should have valid structure
+    for (const call of partialCalls) {
+      expect(typeof call.scannedSoFar).toBe("number");
+      expect(typeof call.totalFiles).toBe("number");
+      expect(call.scannedSoFar).toBeGreaterThan(0);
+      expect(call.scannedSoFar).toBeLessThanOrEqual(files.length);
+      for (const group of call.groups) {
+        expect(group.files.length).toBeGreaterThan(1);
+        for (const file of group.files) {
+          expect(files.some(f => f.path === file)).toBe(true);
+        }
+      }
+    }
+
+    // Final result still contains the expected groups
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0]!.files).toContain("/img/a.png");
+    expect(result.groups[0]!.files).toContain("/img/b.png");
+    expect(result.groups[0]!.files).toContain("/img/c.png");
+    expect(result.groups[0]!.files).not.toContain("/img/unique.png");
+  });
+
+  it("produces the same groups regardless of hash completion order", async () => {
+    const files = [
+      { path: "/img/a.png", basename: "a.png" },
+      { path: "/img/b.png", basename: "b.png" },
+      { path: "/img/c.png", basename: "c.png" }
+    ];
+
+    const HASH_A = "0000000000000000";
+    const HASH_B = "000000000000001f"; // dist(A,B)=5
+    const HASH_C = "00000000000003e0"; // dist(B,C)=10, dist(A,C)=5
+
+    let resolveA!: (hashes: string[]) => void;
+    let resolveB!: (hashes: string[]) => void;
+    let resolveC!: (hashes: string[]) => void;
+
+    const provider: HashProvider = {
+      getHashes: (filePath) => {
+        if (filePath.endsWith("a.png")) return new Promise(res => { resolveA = res; });
+        if (filePath.endsWith("b.png")) return new Promise(res => { resolveB = res; });
+        return new Promise(res => { resolveC = res; });
+      }
+    };
+
+    const resultPromise = runFastPass(files, provider);
+
+    // Allow the for-await loop to register all hash promises
+    await new Promise<void>(res => setImmediate(res));
+
+    // Resolve in out-of-discovery order: B → C → A
+    resolveB([HASH_B]);
+    await new Promise<void>(res => setImmediate(res));
+    resolveC([HASH_C]);
+    await new Promise<void>(res => setImmediate(res));
+    resolveA([HASH_A]);
+
+    const result = await resultPromise;
+
+    expect(result.groups).toHaveLength(1);
+    const groupFiles = result.groups[0]!.files;
+    expect(groupFiles).toContain("/img/a.png");
+    expect(groupFiles).toContain("/img/b.png");
+    expect(groupFiles).toContain("/img/c.png");
   });
 });

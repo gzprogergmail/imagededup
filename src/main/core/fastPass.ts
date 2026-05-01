@@ -7,6 +7,12 @@ import { MIHIndex } from "./bkTree";
 import { UnionFind } from "../../shared/unionFind";
 import type { DetectionResult, DuplicateGroup, ImageRecord } from "../../shared/types";
 
+/**
+ * Minimum milliseconds between incremental partial-result emissions.
+ * Prevents flooding the IPC channel on fast SSDs.
+ */
+const PARTIAL_EMIT_MIN_MS = 500;
+
 const ROTATIONS = [0, 90, 180, 270] as const;
 const SAMPLE_SIZE = 32;
 const HASH_SIZE = 8;
@@ -19,13 +25,6 @@ const CONCURRENCY = Math.min(cpus().length * 2, 16);
  * on visually distinct images.
  */
 export const HAMMING_THRESHOLD = 10;
-
-/**
- * Number of files to process per synchronous batch in the matching phase
- * before yielding to the event loop. Keeps IPC and progress updates
- * responsive during large scans.
- */
-const YIELD_BATCH_SIZE = 1000;
 
 /** Yield one tick to the event loop so IPC/progress messages can be dispatched. */
 function yieldToEventLoop(): Promise<void> {
@@ -166,21 +165,27 @@ export async function runFastPass(
   onMatchProgress?: (done: number, total: number) => void,
   onHashProgress?: (hashedCount: number, discoveredCount: number) => void,
   onDiscoverProgress?: (discoveredCount: number) => void,
-  isCancelled?: () => boolean
+  isCancelled?: () => boolean,
+  onPartialGroups?: (groups: DuplicateGroup[], hashedCount: number, discoveredCount: number) => void
 ): Promise<DetectionResult> {
   const startedAt = performance.now();
   const semaphore = new Semaphore(CONCURRENCY);
 
-  // ── Phase 1: Discover and hash concurrently ───────────────────────────────
+  // ── Phase 1: Discover, hash, and match concurrently ──────────────────────
   // Files are consumed one-by-one from the async iterable (stream or array).
-  // A hash promise is fired immediately for each file, bounded by the semaphore,
-  // so discovery and hashing run in parallel: the stream can yield the next
-  // file path while a previous file's hash I/O is still in flight.
+  // A hash promise is fired immediately for each file, bounded by the semaphore.
+  // Once a file is hashed, it is immediately matched against the MIH index and
+  // inserted, so matching runs in parallel with discovery and hashing.
+  // Partial duplicate groups are emitted to onPartialGroups at most every
+  // PARTIAL_EMIT_MIN_MS milliseconds so the UI can update incrementally.
   const fileHashMap = new Map<string, string[]>();
   const allFiles: ImageRecord[] = [];
   const unionFind = new UnionFind();
+  const mihIndex = new MIHIndex();
+  const firstHashByFile = new Map<string, string>();
   let discoveredCount = 0;
   let hashedCount = 0;
+  let lastPartialEmitMs = -Infinity;
 
   const fileIterable: AsyncIterable<ImageRecord> = Array.isArray(files)
     ? (async function* () { for (const f of files) yield f; })()
@@ -200,9 +205,46 @@ export async function runFastPass(
       try {
         if (isCancelled?.()) return;
         const hashes = await hashProvider.getHashes(file.path);
+
+        // Re-check cancellation after I/O to avoid stale partial updates.
+        if (isCancelled?.()) return;
+
         fileHashMap.set(file.path, hashes);
+        firstHashByFile.set(file.path, hashes[0] ?? "unknown");
+
+        // Match immediately against already-indexed hashes.
+        const matchedRoots = [...new Set(
+          hashes
+            .flatMap((hash) => mihIndex.query(hash, hammingThreshold))
+            .map((match) => unionFind.find(match.filePath))
+        )];
+
+        let groupSeed = file.path;
+        for (const matchedRoot of matchedRoots) {
+          groupSeed = unionFind.union(groupSeed, matchedRoot);
+        }
+
+        // Index this file's hashes for future queries.
+        for (const hash of hashes) {
+          mihIndex.insert(hash, file.path);
+        }
+
         hashedCount++;
         onHashProgress?.(hashedCount, discoveredCount);
+
+        // Emit partial groups at most once per PARTIAL_EMIT_MIN_MS.
+        if (onPartialGroups) {
+          const now = performance.now();
+          if (now - lastPartialEmitMs >= PARTIAL_EMIT_MIN_MS) {
+            lastPartialEmitMs = now;
+            const partialFiles = allFiles.filter(f => fileHashMap.has(f.path));
+            onPartialGroups(
+              buildGroups(partialFiles, firstHashByFile, unionFind),
+              hashedCount,
+              discoveredCount
+            );
+          }
+        }
       } finally {
         semaphore.release();
       }
@@ -212,42 +254,11 @@ export async function runFastPass(
 
   await Promise.all(hashPromises);
 
-  // ── Phase 2: BK-tree near-duplicate matching ──────────────────────────────
-  // Sequential, but chunked: we yield to the event loop every YIELD_BATCH_SIZE
-  // files so that IPC messages (progress, cancel) are never starved.
-  const mihIndex = new MIHIndex();
-  const firstHashByFile = new Map<string, string>();
-
-  for (let i = 0; i < allFiles.length; i++) {
-    if (i % YIELD_BATCH_SIZE === 0) {
-      onMatchProgress?.(i, allFiles.length);
-      await yieldToEventLoop();
-    }
-
-    if (isCancelled?.()) break;
-
-    const file = allFiles[i]!;
-    const hashes = fileHashMap.get(file.path) ?? [];
-    firstHashByFile.set(file.path, hashes[0] ?? "unknown");
-
-    // Find all near-duplicate file paths already indexed, then merge their roots.
-    const matchedRoots = [...new Set(
-      hashes
-        .flatMap((hash) => mihIndex.query(hash, hammingThreshold))
-        .map((match) => unionFind.find(match.filePath))
-    )];
-
-    let groupSeed = file.path;
-    for (const matchedRoot of matchedRoots) {
-      groupSeed = unionFind.union(groupSeed, matchedRoot);
-    }
-
-    // Index this file's hashes for future queries.
-    for (const hash of hashes) {
-      mihIndex.insert(hash, file.path);
-    }
-  }
-
+  // ── Finalization ──────────────────────────────────────────────────────────
+  // Signal the legacy onMatchProgress contract (start → complete), then build
+  // the final group list. Matching is already complete at this point.
+  onMatchProgress?.(0, allFiles.length);
+  await yieldToEventLoop();
   onMatchProgress?.(allFiles.length, allFiles.length);
 
   const groups = buildGroups(allFiles, firstHashByFile, unionFind);

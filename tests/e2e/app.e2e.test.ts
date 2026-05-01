@@ -49,6 +49,69 @@ test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
   }
 });
 
+test("partial results appear during scan before final results arrive", async ({ page }) => {
+  const { generateFixtureSet } = await import("../../scripts/image-fixtures.mjs");
+  const fixtureDir = await mkdtemp(join(tmpdir(), "imagededup-e2e-partial-"));
+  await generateFixtureSet(fixtureDir);
+  const fastResult = await scanFast(fixtureDir);
+  const { serverUrl, stop } = await startStaticServer(resolve("dist/renderer"));
+
+  try {
+    await page.addInitScript(
+      ({ fastResult: nextFastResult }) => {
+        type ScanUpdateCallback = (update: unknown) => void;
+        let scanCallback: ScanUpdateCallback | null = null;
+
+        (window as Window & { imageDedupApi: unknown }).imageDedupApi = {
+          browseFolder: async () => "",
+          cancelScan: async () => undefined,
+          getFolderPreview: async (folder: string) => ({
+            folder,
+            imageCount: 2,
+            samplePaths: ["C:\\fixtures\\base.png", "C:\\fixtures\\copy.png"]
+          }),
+          getLogInfo: async () => ({ directory: "C:\\logs" }),
+          logEvent: async () => undefined,
+          onScanUpdate: (callback: ScanUpdateCallback) => {
+            scanCallback = callback;
+            return () => { scanCallback = null; };
+          },
+          startFastPass: async () => {
+            if (scanCallback) {
+              const result = nextFastResult as { groups: unknown[]; scannedFileCount: number };
+              // Emit a partial update first
+              scanCallback({
+                type: "partial",
+                groups: result.groups.slice(0, 1),
+                scannedSoFar: 1,
+                totalFiles: result.scannedFileCount
+              });
+              // Then emit the complete result after a short delay
+              await new Promise<void>(res => setTimeout(res, 50));
+              scanCallback({ type: "complete", result: nextFastResult });
+            }
+            return null;
+          }
+        };
+      },
+      { fastResult }
+    );
+
+    await page.goto(serverUrl);
+    await page.getByLabel("Folder").fill(fixtureDir);
+    await page.getByLabel("Folder").press("Enter");
+
+    // Partial results banner should appear while scan is in progress
+    await expect(page.locator("#results-panel")).toContainText("Live results");
+
+    // Final results should replace the partial banner
+    await expect(page.locator("#status-line")).toContainText("Fast Pass finished");
+    await expect(page.getByText(/Fast Pass finished with/)).toBeVisible();
+  } finally {
+    await stop();
+  }
+});
+
 async function startStaticServer(root: string): Promise<{ serverUrl: string; stop: () => Promise<void> }> {
   const server = createServer(async (request, response) => {
     try {

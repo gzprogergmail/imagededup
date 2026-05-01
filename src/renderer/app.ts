@@ -4,6 +4,7 @@ import {
   renderFolderPreviewLoadingMarkup,
   renderFolderPreviewMarkup,
   renderErrorMarkup,
+  renderPartialResultsMarkup,
   renderResultsEmptyMarkup,
   renderResultsLoadingMarkup,
   renderResultsMarkup,
@@ -93,6 +94,8 @@ cancelButton.addEventListener("click", async () => {
 function handleScanUpdate(update: ScanUpdate): void {
   if (update.type === "progress") {
     updateProgressUI(update);
+  } else if (update.type === "partial") {
+    renderPartialResults(update.groups, update.scannedSoFar, update.totalFiles);
   } else if (update.type === "complete") {
     handleScanComplete(update.result);
   } else if (update.type === "error") {
@@ -259,6 +262,14 @@ function renderSummary(result: DetectionResult): void {
 
 function renderResults(result: DetectionResult): void {
   resultsPanel.innerHTML = renderResultsMarkup(result);
+}
+
+function renderPartialResults(
+  groups: DetectionResult["groups"],
+  scannedSoFar: number,
+  totalFiles: number
+): void {
+  resultsPanel.innerHTML = renderPartialResultsMarkup(groups, scannedSoFar, totalFiles);
 }
 
 function renderPendingScanState(folder: string): void {

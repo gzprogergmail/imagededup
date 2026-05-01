@@ -78,6 +78,11 @@ export function registerIpcHandlers(): void {
           sendProgressUpdate(webContents, progress);
         }
       },
+      onPartialGroups: (groups, scannedSoFar, totalFiles) => {
+        if (!isCancelled) {
+          webContents.send("scan:update", { type: "partial", groups, scannedSoFar, totalFiles });
+        }
+      },
       isCancelled: () => isCancelled
     };
 
