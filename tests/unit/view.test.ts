@@ -53,6 +53,10 @@ describe("renderer view", () => {
     const markup = renderSummaryMarkup(result, "Fast Pass");
     expect(markup).toContain("Fast Pass");
     expect(markup).toContain("Grouped Files");
+    expect(markup).toContain("Unique Images");
+    expect(markup).toContain("Duplicate Rate");
+    expect(markup).toContain("Throughput");
+    expect(markup).toContain("Potentially Removable");
   });
 
   it("renders helpful placeholder summary cards", () => {

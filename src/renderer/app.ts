@@ -5,6 +5,7 @@ import {
   renderFolderPreviewMarkup,
   renderErrorMarkup,
   renderPartialResultsMarkup,
+  renderPhaseStepperMarkup,
   renderResultsEmptyMarkup,
   renderResultsLoadingMarkup,
   renderResultsMarkup,
@@ -18,6 +19,7 @@ type StatusTone = "idle" | "running" | "success" | "warning" | "error";
 const folderInput = mustElement<HTMLInputElement>("folder-input");
 const thresholdInput = mustElement<HTMLInputElement>("threshold-input");
 const thresholdDisplay = mustElement<HTMLElement>("threshold-display");
+const phaseStepper = mustElement<HTMLElement>("phase-stepper");
 const browseButton = mustElement<HTMLButtonElement>("browse-button");
 const fastButton = mustElement<HTMLButtonElement>("fast-button");
 const cancelButton = mustElement<HTMLButtonElement>("cancel-button");
@@ -39,6 +41,7 @@ let isScanning = false;
 let folderPreviewRequestId = 0;
 let folderPreviewTimer: number | null = null;
 let unsubscribeScanUpdates: (() => void) | null = null;
+let scanStartTime: number | null = null;
 
 void initialize();
 
@@ -115,6 +118,7 @@ function updateProgressUI(progress: ScanProgress): void {
   const percent = progress.percentComplete;
   progressPercent.textContent = `${percent}%`;
   progressText.textContent = formatProgressText(progress);
+  phaseStepper.innerHTML = renderPhaseStepperMarkup(progress);
 
   // Update progress bar if it supports value
   const progressBarElement = progressBar as unknown as HTMLProgressElement;
@@ -142,6 +146,14 @@ function formatProgressText(progress: ScanProgress): string {
   const parts: string[] = [];
   const unitLabel = progress.phase === "comparing" ? "comparisons" : "images";
   parts.push(`${progress.currentFile}/${progress.totalFiles} ${unitLabel}`);
+
+  if (progress.phase === "hashing" && scanStartTime !== null && progress.currentFile > 0) {
+    const elapsed = Date.now() - scanStartTime;
+    if (elapsed > 500) {
+      const imgPerSec = (progress.currentFile / (elapsed / 1000)).toFixed(1);
+      parts.push(`${imgPerSec} img/s`);
+    }
+  }
 
   if (progress.estimatedTimeRemainingMs && progress.estimatedTimeRemainingMs > 0) {
     const seconds = Math.ceil(progress.estimatedTimeRemainingMs / 1000);
@@ -237,6 +249,7 @@ async function runPass(): Promise<void> {
   folderInput.removeAttribute("aria-invalid");
   syncSelectedFolder(folder);
   renderPendingScanState(folder);
+  scanStartTime = Date.now();
   setBusy(true);
   updateStatus("Fast Pass is starting...", "running");
   recordActivity(`Fast Pass started for ${shortenMiddle(folder, 60)}.`);
@@ -263,7 +276,7 @@ async function runPass(): Promise<void> {
 }
 
 function renderSummary(result: DetectionResult): void {
-  summaryGrid.innerHTML = renderSummaryMarkup(result, "Fast Pass");
+  summaryGrid.innerHTML = renderSummaryMarkup(result, "Fast Pass", Number(thresholdInput.value));
 }
 
 function renderResults(result: DetectionResult): void {
@@ -317,6 +330,7 @@ function setBusy(busy: boolean): void {
   progressBar.dataset.visible = String(busy);
   progressText.dataset.visible = String(busy);
   progressPercent.dataset.visible = String(busy);
+  phaseStepper.dataset.visible = String(busy);
 
   if (busy) {
     fastButton.textContent = "Fast Pass Running";
@@ -325,6 +339,7 @@ function setBusy(busy: boolean): void {
     // Reset progress display
     progressPercent.textContent = "0%";
     progressText.textContent = "";
+    phaseStepper.innerHTML = "";
   }
 }
 

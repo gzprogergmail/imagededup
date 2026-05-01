@@ -42,6 +42,7 @@ describe("renderer app", () => {
         <input id="folder-input" />
         <input id="threshold-input" type="range" min="0" max="16" value="5" />
         <span id="threshold-display">5</span>
+        <div id="phase-stepper" data-visible="false"></div>
         <button id="browse-button">Browse</button>
         <button id="fast-button">Start Fast Pass</button>
         <button id="cancel-button">Cancel</button>

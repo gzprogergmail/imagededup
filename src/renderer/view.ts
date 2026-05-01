@@ -1,4 +1,4 @@
-import type { DetectionResult, DuplicateGroup, FolderPreview } from "../shared/types";
+import type { DetectionResult, DuplicateGroup, FolderPreview, ScanProgress } from "../shared/types";
 
 export function renderSummaryEmptyMarkup(): string {
   return `
@@ -14,35 +14,56 @@ export function renderSummaryEmptyMarkup(): string {
 }
 
 export function renderSummaryLoadingMarkup(passLabel: string): string {
+  const placeholderLabels = [
+    "Images Scanned", "Elapsed", "Throughput", "Threshold",
+    "Duplicate Groups", "Grouped Files", "Unique Images", "Duplicate Rate",
+    "Potentially Removable", "Largest Group", "Library"
+  ];
+
   return `
     <article class="summary-card summary-placeholder">
       <div class="summary-value">${escapeHtml(passLabel)}</div>
       <div class="summary-label">Running now</div>
     </article>
-    <article class="summary-card summary-placeholder">
-      <div class="summary-value">Preparing</div>
-      <div class="summary-label">Image counts, timing, and duplicate totals will appear when the pass finishes.</div>
-    </article>
-    <article class="summary-card summary-placeholder">
-      <div class="summary-value">Review next</div>
-      <div class="summary-label">Results will be grouped so you can compare filenames before opening files manually.</div>
-    </article>
+    ${placeholderLabels.map(label => `
+      <article class="summary-card summary-placeholder">
+        <div class="summary-value">—</div>
+        <div class="summary-label">${escapeHtml(label)}</div>
+      </article>
+    `).join("")}
   `;
 }
 
-export function renderSummaryMarkup(result: DetectionResult, passLabel: string): string {
-  const totalDuplicates = result.groups.reduce((sum, group) => sum + group.files.length, 0);
-  const items = [
-    { label: "Pass", value: passLabel },
-    { label: "Library", value: result.library },
-    { label: "Images", value: String(result.scannedFileCount) },
-    { label: "Groups", value: String(result.groups.length) },
-    { label: "Grouped Files", value: String(totalDuplicates) },
-    { label: "Elapsed", value: `${result.elapsedMs} ms` }
+export function renderSummaryMarkup(result: DetectionResult, passLabel: string, threshold?: number): string {
+  const totalFilesInGroups = result.groups.reduce((sum, g) => sum + g.files.length, 0);
+  const totalRemovable = result.groups.reduce((sum, g) => sum + g.files.length - 1, 0);
+  const uniqueImages = result.scannedFileCount - totalFilesInGroups;
+  const largestGroup = result.groups.length > 0 ? Math.max(...result.groups.map(g => g.files.length)) : 0;
+  const duplicateRate = result.scannedFileCount > 0
+    ? (totalFilesInGroups / result.scannedFileCount * 100).toFixed(1) + "%"
+    : "0%";
+  const throughput = result.elapsedMs > 0
+    ? (result.scannedFileCount / (result.elapsedMs / 1000)).toFixed(1) + " img/s"
+    : "—";
+  const thresholdLabel = threshold !== undefined ? `${threshold} / 16` : "default";
+
+  const items: Array<{ label: string; value: string; accent?: boolean }> = [
+    { label: "Mode",                  value: passLabel },
+    { label: "Images Scanned",        value: result.scannedFileCount.toLocaleString() },
+    { label: "Elapsed",               value: formatDuration(result.elapsedMs) },
+    { label: "Throughput",            value: throughput },
+    { label: "Threshold",             value: thresholdLabel },
+    { label: "Duplicate Groups",      value: result.groups.length.toLocaleString(),    accent: result.groups.length > 0 },
+    { label: "Grouped Files",         value: totalFilesInGroups.toLocaleString() },
+    { label: "Unique Images",         value: uniqueImages.toLocaleString() },
+    { label: "Duplicate Rate",        value: duplicateRate },
+    { label: "Potentially Removable", value: totalRemovable.toLocaleString(),          accent: totalRemovable > 0 },
+    { label: "Largest Group",         value: largestGroup > 0 ? `${largestGroup} files` : "—" },
+    { label: "Library",               value: result.library },
   ];
 
   return items.map((item) => `
-    <article class="summary-card">
+    <article class="summary-card${item.accent ? " summary-card-accent" : ""}">
       <div class="summary-value">${escapeHtml(item.value)}</div>
       <div class="summary-label">${escapeHtml(item.label)}</div>
     </article>
@@ -362,4 +383,41 @@ export function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+const SCAN_PHASES: Array<{ key: ScanProgress["phase"]; label: string }> = [
+  { key: "discovering", label: "Discover" },
+  { key: "hashing",     label: "Hash" },
+  { key: "comparing",   label: "Compare" },
+];
+
+export function renderPhaseStepperMarkup(progress: ScanProgress): string {
+  const currentIndex = progress.phase === "complete"
+    ? SCAN_PHASES.length
+    : SCAN_PHASES.findIndex(p => p.key === progress.phase);
+
+  return SCAN_PHASES.map((p, i) => {
+    const state = i < currentIndex ? "completed" : i === currentIndex ? "active" : "pending";
+    const dotContent = state === "completed" ? "✓" : String(i + 1);
+    const subText = state === "active" && progress.totalFiles > 0
+      ? `<span class="phase-sub">${progress.currentFile.toLocaleString()} / ${progress.totalFiles.toLocaleString()}</span>`
+      : "";
+    const connector = i < SCAN_PHASES.length - 1
+      ? `<div class="phase-connector${i < currentIndex ? " phase-connector-done" : ""}"></div>`
+      : "";
+
+    return `<div class="phase-step phase-${state}">
+      <div class="phase-dot">${dotContent}</div>
+      <span class="phase-label">${escapeHtml(p.label)}</span>
+      ${subText}
+    </div>${connector}`;
+  }).join("");
 }

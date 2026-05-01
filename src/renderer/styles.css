@@ -386,6 +386,96 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
+/* ── Phase stepper ───────────────────────────────────────────────────────── */
+
+.phase-stepper {
+  display: none;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--panel-strong);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.phase-stepper[data-visible="true"] {
+  display: flex;
+}
+
+.phase-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+
+.phase-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  transition: background 250ms ease, border-color 250ms ease, color 250ms ease;
+}
+
+.phase-step.phase-completed .phase-dot {
+  background: var(--success);
+  border-color: var(--success);
+  color: white;
+}
+
+.phase-step.phase-active .phase-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  animation: pulse-phase-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-phase-dot {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50%       { box-shadow: 0 0 0 6px transparent; }
+}
+
+.phase-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: color 250ms ease;
+}
+
+.phase-step.phase-completed .phase-label,
+.phase-step.phase-active .phase-label {
+  color: var(--text);
+}
+
+.phase-sub {
+  font-size: 0.65rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.phase-connector {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin-bottom: 18px;
+  min-width: 16px;
+  transition: background 250ms ease;
+}
+
+.phase-connector-done {
+  background: var(--success);
+}
+
 .progress-header {
   display: flex;
   justify-content: space-between;
@@ -517,7 +607,7 @@ wa-callout.status::part(base) {
 .summary-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   padding: 20px;
 }
 
@@ -533,6 +623,15 @@ wa-callout.status::part(base) {
 .summary-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
+}
+
+.summary-card-accent {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.summary-card-accent .summary-value {
+  color: var(--accent-strong);
 }
 
 .summary-placeholder,
