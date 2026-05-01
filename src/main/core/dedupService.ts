@@ -45,6 +45,11 @@ async function runFastPassWithProgress(
 
   const startTime = performance.now();
   let hashedCount = 0;
+  let discoveredCount = 0;
+  let timeToFirstFileMs: number | null = null;
+  let timeToFirstHashMs: number | null = null;
+
+  function ms(): number { return performance.now() - startTime; }
 
   function emitProgress(
     phase: ScanProgress["phase"],
@@ -52,7 +57,7 @@ async function runFastPassWithProgress(
     totalFiles: number
   ): void {
     if (callbacks.isCancelled()) return;
-    const elapsed = performance.now() - startTime;
+    const elapsed = ms();
     const percentComplete = totalFiles > 0 ? Math.round((currentFile / totalFiles) * 100) : 0;
     const estimatedTimeRemainingMs =
       currentFile > 0 && totalFiles > currentFile
@@ -68,10 +73,10 @@ async function runFastPassWithProgress(
     });
   }
 
-  // Signal immediately so the UI is never stuck on "Fast Pass is starting…"
+  // Signal immediately so the UI is never stuck on "Fast Pass is starting..."
   emitProgress("discovering", 0, 0);
 
-  return runFastPass(
+  const result = await runFastPass(
     streamImages(folder),
     new ImghashProvider(),
     undefined,
@@ -79,15 +84,29 @@ async function runFastPassWithProgress(
       emitProgress("comparing", done, total);
     },
     (hashed, discovered) => {
+      if (timeToFirstHashMs === null) timeToFirstHashMs = ms();
       hashedCount = hashed;
       emitProgress("hashing", hashed, discovered);
     },
     (discovered) => {
-      // Show live discovery count only while hashing hasn’t started yet.
+      if (timeToFirstFileMs === null) timeToFirstFileMs = ms();
+      discoveredCount = discovered;
+      // Show live discovery count only while hashing has not started yet.
       if (hashedCount === 0) emitProgress("discovering", 0, discovered);
     },
     callbacks.isCancelled
   );
+
+  await logEvent("scan", "fast.timing", {
+    totalMs: Math.round(ms()),
+    filesDiscovered: discoveredCount,
+    timeToFirstFile_ms: timeToFirstFileMs !== null ? Math.round(timeToFirstFileMs) : null,
+    timeToFirstHash_ms: timeToFirstHashMs !== null ? Math.round(timeToFirstHashMs) : null,
+    hashingPhase_ms: timeToFirstHashMs !== null ? Math.round(ms() - timeToFirstHashMs) : null,
+    note: "timeToFirstFile=glob/network latency; hashingPhase=per-file I/O cost x files/concurrency"
+  });
+
+  return result;
 }
 
 async function validateFolder(folder: string): Promise<string> {
