@@ -17,6 +17,7 @@ const ROTATIONS = [0, 90, 180, 270] as const;
 const SAMPLE_SIZE = 32;
 const HASH_SIZE = 8;
 const CONCURRENCY = Math.min(cpus().length * 2, 16);
+const SAMPLE_PIXELS = SAMPLE_SIZE * SAMPLE_SIZE;
 
 /**
  * Maximum Hamming distance (in bits out of 64) at which two pHashes are
@@ -108,23 +109,51 @@ export interface HashProvider {
   getHashes(filePath: string): Promise<string[]>;
 }
 
+function rotateSquareGrayscale(
+  pixels: Uint8Array,
+  rotation: typeof ROTATIONS[number]
+): Uint8Array {
+  if (rotation === 0) return pixels;
+
+  const rotated = new Uint8Array(SAMPLE_PIXELS);
+
+  for (let row = 0; row < SAMPLE_SIZE; row++) {
+    for (let col = 0; col < SAMPLE_SIZE; col++) {
+      const srcIndex = row * SAMPLE_SIZE + col;
+      let destIndex = 0;
+
+      switch (rotation) {
+        case 90:
+          destIndex = col * SAMPLE_SIZE + (SAMPLE_SIZE - 1 - row);
+          break;
+        case 180:
+          destIndex = (SAMPLE_SIZE - 1 - row) * SAMPLE_SIZE + (SAMPLE_SIZE - 1 - col);
+          break;
+        case 270:
+          destIndex = (SAMPLE_SIZE - 1 - col) * SAMPLE_SIZE + row;
+          break;
+      }
+
+      rotated[destIndex] = pixels[srcIndex]!;
+    }
+  }
+
+  return rotated;
+}
+
 export class ImghashProvider implements HashProvider {
   async getHashes(filePath: string): Promise<string[]> {
-    // Read the file once to avoid repeated disk I/O (critical on network storage).
-    // All 4 rotation pipelines decode from the same in-memory buffer concurrently.
+    // Read and preprocess the file once, then rotate the tiny 32x32 grayscale
+    // sample in memory. This avoids paying the decode/resize cost 4 times.
     const fileBuffer = await readFile(filePath);
-
-    const hashes = await Promise.all(
-      ROTATIONS.map(async (rotation) => {
-        const pixels = await sharp(fileBuffer)
-          .rotate(rotation)
-          .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: "fill" })
-          .grayscale()
-          .raw()
-          .toBuffer();
-        return dctHash(new Uint8Array(pixels));
-      })
+    const basePixels = new Uint8Array(
+      await sharp(fileBuffer)
+        .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: "fill" })
+        .grayscale()
+        .raw()
+        .toBuffer()
     );
+    const hashes = ROTATIONS.map((rotation) => dctHash(rotateSquareGrayscale(basePixels, rotation)));
 
     return [...new Set(hashes)];
   }
