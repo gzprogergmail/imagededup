@@ -155,47 +155,73 @@ class Semaphore {
 }
 
 export async function runFastPass(
-  files: ImageRecord[],
+  files: ImageRecord[] | AsyncIterable<ImageRecord>,
   hashProvider: HashProvider = new ImghashProvider(),
   hammingThreshold = HAMMING_THRESHOLD,
-  onMatchProgress?: (done: number, total: number) => void
+  onMatchProgress?: (done: number, total: number) => void,
+  onHashProgress?: (hashedCount: number, discoveredCount: number) => void,
+  onDiscoverProgress?: (discoveredCount: number) => void,
+  isCancelled?: () => boolean
 ): Promise<DetectionResult> {
   const startedAt = performance.now();
   const semaphore = new Semaphore(CONCURRENCY);
 
-  // ── Phase 1: Hash all files concurrently ──────────────────────────────────
-  // Bounded by the semaphore; sharp I/O yields naturally to the event loop
-  // between each file so IPC and progress callbacks remain responsive.
+  // ── Phase 1: Discover and hash concurrently ───────────────────────────────
+  // Files are consumed one-by-one from the async iterable (stream or array).
+  // A hash promise is fired immediately for each file, bounded by the semaphore,
+  // so discovery and hashing run in parallel: the stream can yield the next
+  // file path while a previous file's hash I/O is still in flight.
   const fileHashMap = new Map<string, string[]>();
+  const allFiles: ImageRecord[] = [];
+  const unionFind = new UnionFind();
+  let discoveredCount = 0;
+  let hashedCount = 0;
 
-  await Promise.all(files.map(async (file) => {
-    await semaphore.acquire();
-    try {
-      const hashes = await hashProvider.getHashes(file.path);
-      fileHashMap.set(file.path, hashes);
-    } finally {
-      semaphore.release();
-    }
-  }));
+  const fileIterable: AsyncIterable<ImageRecord> = Array.isArray(files)
+    ? (async function* () { for (const f of files) yield f; })()
+    : files;
+
+  const hashPromises: Promise<void>[] = [];
+
+  for await (const file of fileIterable) {
+    if (isCancelled?.()) break;
+    discoveredCount++;
+    allFiles.push(file);
+    unionFind.add(file.path);
+    onDiscoverProgress?.(discoveredCount);
+
+    const p = (async () => {
+      await semaphore.acquire();
+      try {
+        if (isCancelled?.()) return;
+        const hashes = await hashProvider.getHashes(file.path);
+        fileHashMap.set(file.path, hashes);
+        hashedCount++;
+        onHashProgress?.(hashedCount, discoveredCount);
+      } finally {
+        semaphore.release();
+      }
+    })();
+    hashPromises.push(p);
+  }
+
+  await Promise.all(hashPromises);
 
   // ── Phase 2: BK-tree near-duplicate matching ──────────────────────────────
   // Sequential, but chunked: we yield to the event loop every YIELD_BATCH_SIZE
   // files so that IPC messages (progress, cancel) are never starved.
   const mihIndex = new MIHIndex();
   const firstHashByFile = new Map<string, string>();
-  const unionFind = new UnionFind();
 
-  for (const file of files) {
-    unionFind.add(file.path);
-  }
-
-  for (let i = 0; i < files.length; i++) {
+  for (let i = 0; i < allFiles.length; i++) {
     if (i % YIELD_BATCH_SIZE === 0) {
-      onMatchProgress?.(i, files.length);
+      onMatchProgress?.(i, allFiles.length);
       await yieldToEventLoop();
     }
 
-    const file = files[i]!;
+    if (isCancelled?.()) break;
+
+    const file = allFiles[i]!;
     const hashes = fileHashMap.get(file.path) ?? [];
     firstHashByFile.set(file.path, hashes[0] ?? "unknown");
 
@@ -217,15 +243,15 @@ export async function runFastPass(
     }
   }
 
-  onMatchProgress?.(files.length, files.length);
+  onMatchProgress?.(allFiles.length, allFiles.length);
 
-  const groups = buildGroups(files, firstHashByFile, unionFind);
+  const groups = buildGroups(allFiles, firstHashByFile, unionFind);
   return {
     elapsedMs: Math.round(performance.now() - startedAt),
     groups,
     library: "imghash",
     mode: "fast",
-    scannedFileCount: files.length,
+    scannedFileCount: allFiles.length,
     warnings: []
   };
 }

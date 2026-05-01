@@ -2,8 +2,8 @@ import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { logEvent } from "../logger";
-import { discoverImages } from "./imageDiscovery";
-import { runFastPass, type HashProvider } from "./fastPass";
+import { discoverImages, streamImages } from "./imageDiscovery";
+import { runFastPass } from "./fastPass";
 import type { ScanProgress, ImageRecord, DetectionResult, FolderPreview } from "../../shared/types";
 
 export interface ScanCallbacks {
@@ -11,96 +11,17 @@ export interface ScanCallbacks {
   isCancelled: () => boolean;
 }
 
-class ProgressTracker {
-  private totalFiles: number;
-  private currentFile: number;
-  private phase: ScanProgress["phase"];
-  private startTime: number;
-  private callbacks: ScanCallbacks;
-
-  constructor(totalFiles: number, callbacks: ScanCallbacks) {
-    this.totalFiles = totalFiles;
-    this.currentFile = 0;
-    this.phase = "discovering";
-    this.startTime = performance.now();
-    this.callbacks = callbacks;
-  }
-
-  setPhase(phase: ScanProgress["phase"]): void {
-    this.phase = phase;
-    this.reportProgress();
-  }
-
-  increment(currentPath?: string): void {
-    if (this.callbacks.isCancelled()) return;
-    this.currentFile++;
-    this.reportProgress(currentPath);
-  }
-
-  advanceTo(currentFile: number, currentPath?: string): void {
-    if (this.callbacks.isCancelled()) return;
-    this.currentFile = currentFile;
-    this.reportProgress(currentPath);
-  }
-
-  private reportProgress(currentPath?: string): void {
-    if (this.callbacks.isCancelled()) return;
-
-    const elapsed = performance.now() - this.startTime;
-    const percentComplete = this.totalFiles > 0
-      ? Math.round((this.currentFile / this.totalFiles) * 100)
-      : 0;
-
-    // Estimate remaining time based on average time per file
-    const estimatedTimeRemainingMs = this.currentFile > 0
-      ? Math.round((elapsed / this.currentFile) * (this.totalFiles - this.currentFile))
-      : undefined;
-
-    this.callbacks.onProgress({
-      type: "progress",
-      currentFile: this.currentFile,
-      totalFiles: this.totalFiles,
-      currentPath,
-      phase: this.phase,
-      percentComplete,
-      estimatedTimeRemainingMs
-    });
-  }
-}
-
-class ProgressHashProvider implements HashProvider {
-  private baseProvider: HashProvider;
-  private tracker: ProgressTracker;
-  private filePath: string | null = null;
-
-  constructor(baseProvider: HashProvider, tracker: ProgressTracker) {
-    this.baseProvider = baseProvider;
-    this.tracker = tracker;
-  }
-
-  async getHashes(filePath: string): Promise<string[]> {
-    this.filePath = filePath;
-    const result = await this.baseProvider.getHashes(filePath);
-    this.tracker.increment(filePath);
-    return result;
-  }
-}
-
 export async function scanFast(folder: string, callbacks?: ScanCallbacks): Promise<DetectionResult> {
   await logEvent("scan", "fast.requested", { folder });
-  const files = await listImages(folder);
-  await logEvent("scan", "fast.files_discovered", {
-    fileCount: files.length,
-    folder
-  });
+  const absoluteFolder = await validateFolder(folder);
 
   const result = callbacks
-    ? await runFastPassWithProgress(files, callbacks)
-    : await runFastPass(files);
+    ? await runFastPassWithProgress(absoluteFolder, callbacks)
+    : await runFastPass(streamImages(absoluteFolder));
 
   await logEvent("scan", "fast.completed", {
     elapsedMs: result.elapsedMs,
-    fileCount: files.length,
+    fileCount: result.scannedFileCount,
     groupCount: result.groups.length,
     warnings: result.warnings
   });
@@ -117,25 +38,59 @@ export async function previewFolder(folder: string): Promise<FolderPreview> {
 }
 
 async function runFastPassWithProgress(
-  files: ImageRecord[],
+  folder: string,
   callbacks: ScanCallbacks
 ): Promise<DetectionResult> {
   const { ImghashProvider } = await import("./fastPass");
-  const tracker = new ProgressTracker(files.length, callbacks);
-  tracker.setPhase("hashing");
 
-  const baseProvider = new ImghashProvider();
-  const progressProvider = new ProgressHashProvider(baseProvider, tracker);
+  const startTime = performance.now();
+  let hashedCount = 0;
 
-  const result = await runFastPass(files, progressProvider, undefined, (done, total) => {
-    if (done === 0) tracker.setPhase("comparing");
-    if (!callbacks.isCancelled()) tracker.advanceTo(done, undefined);
-  });
-  tracker.setPhase("complete");
-  return result;
+  function emitProgress(
+    phase: ScanProgress["phase"],
+    currentFile: number,
+    totalFiles: number
+  ): void {
+    if (callbacks.isCancelled()) return;
+    const elapsed = performance.now() - startTime;
+    const percentComplete = totalFiles > 0 ? Math.round((currentFile / totalFiles) * 100) : 0;
+    const estimatedTimeRemainingMs =
+      currentFile > 0 && totalFiles > currentFile
+        ? Math.round((elapsed / currentFile) * (totalFiles - currentFile))
+        : undefined;
+    callbacks.onProgress({
+      type: "progress",
+      currentFile,
+      totalFiles,
+      phase,
+      percentComplete,
+      estimatedTimeRemainingMs
+    });
+  }
+
+  // Signal immediately so the UI is never stuck on "Fast Pass is starting…"
+  emitProgress("discovering", 0, 0);
+
+  return runFastPass(
+    streamImages(folder),
+    new ImghashProvider(),
+    undefined,
+    (done, total) => {
+      emitProgress("comparing", done, total);
+    },
+    (hashed, discovered) => {
+      hashedCount = hashed;
+      emitProgress("hashing", hashed, discovered);
+    },
+    (discovered) => {
+      // Show live discovery count only while hashing hasn’t started yet.
+      if (hashedCount === 0) emitProgress("discovering", 0, discovered);
+    },
+    callbacks.isCancelled
+  );
 }
 
-async function listImages(folder: string): Promise<ImageRecord[]> {
+async function validateFolder(folder: string): Promise<string> {
   const absoluteFolder = resolve(folder);
   await logEvent("scan", "folder.validating", { absoluteFolder });
   const folderStat = await stat(absoluteFolder);
@@ -143,7 +98,11 @@ async function listImages(folder: string): Promise<ImageRecord[]> {
     await logEvent("scan", "folder.invalid", { absoluteFolder }, "error");
     throw new Error(`Folder does not exist: ${absoluteFolder}`);
   }
+  return absoluteFolder;
+}
 
+async function listImages(folder: string): Promise<ImageRecord[]> {
+  const absoluteFolder = await validateFolder(folder);
   const images = await discoverImages(absoluteFolder);
   await logEvent("scan", "folder.validated", {
     absoluteFolder,

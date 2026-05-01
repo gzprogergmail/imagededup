@@ -31,3 +31,23 @@ export async function discoverImages(folder: string): Promise<ImageRecord[]> {
       path: filePath
     }));
 }
+
+/**
+ * Async generator that yields ImageRecord entries one-by-one as fast-glob
+ * discovers them. Allows callers to begin processing files immediately
+ * instead of waiting for the full directory walk to complete — especially
+ * useful for large or network-mounted folders.
+ */
+export async function* streamImages(folder: string): AsyncGenerator<ImageRecord> {
+  const stream = fg.stream(IMAGE_PATTERNS, {
+    absolute: true,
+    caseSensitiveMatch: false,
+    cwd: folder,
+    onlyFiles: true,
+    unique: true
+  });
+  for await (const entry of stream) {
+    const filePath = resolve(entry as string);
+    yield { path: filePath, basename: basename(filePath) };
+  }
+}
