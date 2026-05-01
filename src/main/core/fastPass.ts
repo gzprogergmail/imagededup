@@ -79,7 +79,7 @@ export function dctHash(pixels: Uint8Array): string {
       const nv = normTable[v]!;
       let sum = 0;
       for (let x = 0; x < n; x++) {
-        sum += cosU[x]! * T[x * h + v];
+        sum += cosU[x]! * T[x * h + v]!;
       }
       dct[u * h + v] = (nu * nv * sum) / n;
     }
