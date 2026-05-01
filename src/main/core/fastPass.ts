@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 
 import sharp from "sharp";
@@ -110,9 +111,13 @@ export interface HashProvider {
 
 export class ImghashProvider implements HashProvider {
   async getHashes(filePath: string): Promise<string[]> {
+    // Read the file once to avoid repeated disk I/O (critical on network storage).
+    // All 4 rotation pipelines decode from the same in-memory buffer concurrently.
+    const fileBuffer = await readFile(filePath);
+
     const hashes = await Promise.all(
       ROTATIONS.map(async (rotation) => {
-        const pixels = await sharp(filePath)
+        const pixels = await sharp(fileBuffer)
           .rotate(rotation)
           .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: "fill" })
           .grayscale()

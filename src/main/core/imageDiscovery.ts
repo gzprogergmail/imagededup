@@ -19,8 +19,7 @@ export async function discoverImages(folder: string): Promise<ImageRecord[]> {
     absolute: true,
     caseSensitiveMatch: false,
     cwd: root,
-    onlyFiles: true,
-    unique: true
+    onlyFiles: true
   });
 
   return matches
@@ -43,8 +42,7 @@ export async function* streamImages(folder: string): AsyncGenerator<ImageRecord>
     absolute: true,
     caseSensitiveMatch: false,
     cwd: folder,
-    onlyFiles: true,
-    unique: true
+    onlyFiles: true
   });
   for await (const entry of stream) {
     const filePath = resolve(entry as string);
