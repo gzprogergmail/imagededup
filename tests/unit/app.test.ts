@@ -71,6 +71,8 @@ describe("renderer app", () => {
           getFolderPreview: vi.fn().mockResolvedValue(previewResult),
           getLogInfo: vi.fn().mockResolvedValue({ directory: "C:\\logs" }),
           logEvent: vi.fn().mockResolvedValue(undefined),
+          openFile: vi.fn().mockResolvedValue(undefined),
+          openFolder: vi.fn().mockResolvedValue(undefined),
           startFastPass: vi.fn().mockResolvedValue(fastResult)
         }
       })
@@ -94,7 +96,7 @@ describe("renderer app", () => {
 
     await waitFor(() => {
       expect(document.getElementById("summary-grid")?.textContent).toContain("No scan yet");
-      expect(document.getElementById("results-panel")?.textContent).toContain("Nothing to review yet.");
+      expect(document.getElementById("results-panel")?.textContent).toContain("No results yet");
       expect(document.getElementById("status-line")?.textContent).toContain("Choose a folder");
     });
   });
@@ -297,6 +299,156 @@ describe("renderer app", () => {
 
     await waitFor(() => {
       expect(document.getElementById("folder-preview")?.textContent).toContain("Use an existing folder path to preview its image files.");
+    });
+  });
+
+  it("calls openFile via event delegation when a file button is clicked", async () => {
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const openBtn = document.querySelector('[data-action="open-file"]') as HTMLElement | null;
+    expect(openBtn).not.toBeNull();
+    fireEvent.click(openBtn!);
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.openFile).toHaveBeenCalledWith(openBtn!.dataset.path);
+    });
+  });
+
+  it("calls openFolder via event delegation when Show in Folder is clicked", async () => {
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const folderBtn = document.querySelector('[data-action="open-folder"]') as HTMLElement | null;
+    expect(folderBtn).not.toBeNull();
+    fireEvent.click(folderBtn!);
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.openFolder).toHaveBeenCalledWith(folderBtn!.dataset.path);
+    });
+  });
+
+  it("calls openFile via delegation when a path with apostrophe is clicked", async () => {
+    const apostropheResult = {
+      elapsedMs: 10,
+      groups: [
+        {
+          evidence: "Perceptual hash · abc",
+          files: ["C:\\User's Photos\\photo.png", "C:\\User's Photos\\copy.png"],
+          id: "g-apos",
+          kind: "fast" as const,
+          representative: "C:\\User's Photos\\photo.png",
+          score: 0.95
+        }
+      ],
+      library: "imghash",
+      mode: "fast" as const,
+      scannedFileCount: 2,
+      warnings: []
+    };
+    vi.mocked(window.imageDedupApi.startFastPass).mockResolvedValueOnce(apostropheResult);
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\User's Photos";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("photo.png");
+    });
+
+    const openBtn = document.querySelector('[data-action="open-file"]') as HTMLElement | null;
+    expect(openBtn).not.toBeNull();
+    fireEvent.click(openBtn!);
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.openFile).toHaveBeenCalledWith("C:\\User's Photos\\photo.png");
+    });
+  });
+
+  it("shows an error in the status line when openFile fails", async () => {
+    vi.mocked(window.imageDedupApi.openFile).mockRejectedValueOnce(new Error("No application to open file"));
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const openBtn = document.querySelector('[data-action="open-file"]') as HTMLElement | null;
+    fireEvent.click(openBtn!);
+
+    await waitFor(() => {
+      expect(document.getElementById("status-line")?.textContent).toContain("No application to open file");
+    });
+  });
+
+  it("shows an error in the status line when openFolder fails", async () => {
+    vi.mocked(window.imageDedupApi.openFolder).mockRejectedValueOnce(new Error("Folder not found"));
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const folderBtn = document.querySelector('[data-action="open-folder"]') as HTMLElement | null;
+    fireEvent.click(folderBtn!);
+
+    await waitFor(() => {
+      expect(document.getElementById("status-line")?.textContent).toContain("Folder not found");
+    });
+  });
+
+  it("shows Copied! feedback on the button when copy-path succeeds", async () => {
+    const clipboardMock = { writeText: vi.fn().mockResolvedValue(undefined) };
+    Object.defineProperty(navigator, "clipboard", { value: clipboardMock, writable: true, configurable: true });
+
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const copyBtn = document.querySelector('[data-action="copy-path"]') as HTMLElement | null;
+    expect(copyBtn).not.toBeNull();
+    fireEvent.click(copyBtn!);
+
+    await waitFor(() => {
+      expect(copyBtn!.textContent).toBe("Copied!");
+      expect(clipboardMock.writeText).toHaveBeenCalledWith(copyBtn!.dataset.path);
+    });
+  });
+
+  it("shows a warning when copy-path clipboard write fails", async () => {
+    const clipboardMock = { writeText: vi.fn().mockRejectedValue(new Error("denied")) };
+    Object.defineProperty(navigator, "clipboard", { value: clipboardMock, writable: true, configurable: true });
+
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const copyBtn = document.querySelector('[data-action="copy-path"]') as HTMLElement | null;
+    fireEvent.click(copyBtn!);
+
+    await waitFor(() => {
+      expect(document.getElementById("status-line")?.textContent).toContain("Could not copy path to clipboard.");
     });
   });
 });

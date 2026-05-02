@@ -4,11 +4,11 @@ export function renderSummaryEmptyMarkup(): string {
   return `
     <article class="summary-card summary-placeholder">
       <div class="summary-value">No scan yet</div>
-      <div class="summary-label">Choose a folder and run a pass to see scan metrics.</div>
+      <div class="summary-label">Choose a folder and run a scan to see duplicate statistics.</div>
     </article>
     <article class="summary-card summary-placeholder">
-      <div class="summary-value">Fast Pass first</div>
-      <div class="summary-label">Use the faster hash-based pass to confirm the folder looks right.</div>
+      <div class="summary-value">Fast Pass</div>
+      <div class="summary-label">Finds exact duplicates and near-copies using perceptual hashing.</div>
     </article>
   `;
 }
@@ -74,11 +74,11 @@ export function renderResultsEmptyMarkup(): string {
   return `
     <article class="group-card result-empty">
       <div class="results-header">
-        <strong>Nothing to review yet.</strong>
+        <strong>No results yet</strong>
         <span class="pill">waiting</span>
       </div>
       <div class="group-meta">
-        Pick a folder, run Fast Pass, and this panel will fill with duplicate groups instead of blank space.
+        Choose a folder and run a scan. Duplicate groups will appear here when the scan completes.
       </div>
     </article>
   `;
@@ -127,7 +127,7 @@ export function renderResultsLoadingMarkup(passLabel: string, folder: string): s
       </div>
       <div class="group-meta">Scanning ${escapeHtml(shortenMiddle(folder, 84))}</div>
       <div class="group-meta">
-        Existing results are cleared so the list only reflects the most recent pass when it finishes.
+        Results from previous scans are cleared. Duplicate groups will appear here when the scan completes.
       </div>
     </article>
   `;
@@ -266,8 +266,9 @@ export function renderGroupMarkup(group: DuplicateGroup): string {
   const thumbGrid = group.files.map((file) => `
     <button
       class="group-thumb-item"
+      data-action="open-file"
+      data-path="${escapeHtml(file)}"
       title="${escapeHtml(fileNameForPath(file))}"
-      onclick="window.imageDedupApi.openFile('${escapeHtml(file)}')"
       type="button"
     >
       ${createThumbnailHtml(file, "group-thumb-image")}
@@ -305,7 +306,7 @@ export function renderGroupMarkup(group: DuplicateGroup): string {
       <div class="group-thumb-strip">${thumbGrid}</div>
       ${fileListHtml}
       <div class="group-actions">
-        <button class="btn-secondary btn-sm" onclick="window.imageDedupApi.openFolder('${escapeHtml(group.representative)}')">
+        <button class="btn-secondary btn-sm" data-action="open-folder" data-path="${escapeHtml(group.representative)}">
           Open Folder
         </button>
       </div>
@@ -344,9 +345,9 @@ function renderFileMarkup(file: string, representativeDirectory: string): string
         <span class="group-file-name" title="${escapeHtml(file)}">${escapeHtml(fileName)}</span>
         <span class="group-file-path" title="${escapeHtml(file)}">${escapeHtml(pathLabel)}</span>
         <div class="group-file-actions">
-          <button class="btn-secondary btn-sm" onclick="window.imageDedupApi.openFile('${escapeHtml(file)}')">Open</button>
-          <button class="btn-secondary btn-sm" onclick="window.imageDedupApi.openFolder('${escapeHtml(file)}')">Show in Folder</button>
-          <button class="btn-secondary btn-sm btn-copy" onclick="navigator.clipboard.writeText('${escapeHtml(file)}').catch(()=>{})" title="Copy full path">Copy Path</button>
+          <button class="btn-secondary btn-sm" data-action="open-file" data-path="${escapeHtml(file)}">Open</button>
+          <button class="btn-secondary btn-sm" data-action="open-folder" data-path="${escapeHtml(file)}">Show in Folder</button>
+          <button class="btn-secondary btn-sm btn-copy" data-action="copy-path" data-path="${escapeHtml(file)}" title="Copy full path">Copy Path</button>
         </div>
       </div>
     </li>

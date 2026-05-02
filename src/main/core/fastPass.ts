@@ -338,7 +338,8 @@ function buildGroups(
     .filter(([, items]) => items.length > 1)
     .map(([root, items]) => {
       const representative = items[0]!;
-      const evidence = firstHashByFile.get(representative) ?? "unknown";
+      const hashValue = firstHashByFile.get(representative) ?? "unknown";
+      const evidence = `Perceptual hash · ${hashValue}`;
       return {
         evidence,
         files: items,

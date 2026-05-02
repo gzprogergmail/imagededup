@@ -100,6 +100,33 @@ cancelButton.addEventListener("click", async () => {
   await requestCancelScan();
 });
 
+document.addEventListener("click", (event) => {
+  const target = (event.target as Element).closest<HTMLElement>("[data-action]");
+  if (!target) return;
+  const { action, path } = target.dataset;
+  if (!path) return;
+
+  if (action === "open-file") {
+    void window.imageDedupApi.openFile(path).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Could not open file.";
+      updateStatus(msg, "error");
+    });
+  } else if (action === "open-folder") {
+    void window.imageDedupApi.openFolder(path).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Could not open folder.";
+      updateStatus(msg, "error");
+    });
+  } else if (action === "copy-path") {
+    void navigator.clipboard.writeText(path).then(() => {
+      const original = target.textContent?.trim() ?? "Copy Path";
+      target.textContent = "Copied!";
+      setTimeout(() => { target.textContent = original; }, 1500);
+    }).catch(() => {
+      updateStatus("Could not copy path to clipboard.", "warning");
+    });
+  }
+});
+
 function handleScanUpdate(update: ScanUpdate): void {
   if (update.type === "progress") {
     updateProgressUI(update);
@@ -367,7 +394,7 @@ async function initialize(): Promise<void> {
   resultsPanel.innerHTML = renderResultsEmptyMarkup();
   syncSelectedFolder(folderInput.value.trim());
   updateStatus("Choose a folder, then start with Fast Pass.", "idle");
-  recordActivity("Renderer initialized.");
+  recordActivity("Ready to scan.");
   void logUiEvent("renderer.initialized");
 
   try {

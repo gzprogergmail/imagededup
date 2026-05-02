@@ -23,8 +23,7 @@ function createSvg(label, accent) {
           <circle cx="440" cy="470" r="16" />
         </g>
         <text x="22" y="110" font-size="72" font-family="Segoe UI" font-weight="700" fill="#fff">${label}</text>
-        <text x="22" y="155" font-size="28" font-family="Segoe UI" fill="#fff">duplicate-detection fixture</text>
-        <text x="20" y="620" font-size="90" font-family="Georgia" fill="#24190f">Feature rich image 042</text>
+        <text x="20" y="620" font-size="90" font-family="Georgia" fill="#24190f">Landscape Collection</text>
       </g>
     </svg>
   `;
@@ -42,7 +41,7 @@ function createUniqueSvg() {
         <circle cx="150" cy="420" r="120" fill="#faf0ca" />
         <circle cx="420" cy="420" r="100" fill="#f95738" />
         <rect x="560" y="300" width="220" height="220" rx="38" fill="#f4d35e" />
-        <text x="20" y="640" font-size="110" font-family="Courier New" font-weight="700" fill="#faf0ca">OMEGA / 777</text>
+        <text x="20" y="640" font-size="110" font-family="Courier New" font-weight="700" fill="#faf0ca">Abstract Series</text>
       </g>
     </svg>
   `;
@@ -53,14 +52,14 @@ export async function generateFixtureSet(targetDir) {
   await mkdir(root, { recursive: true });
 
   const base = join(root, "base.png");
-  const resized = join(root, "fast-resized.png");
-  const rotated90 = join(root, "fast-rotated-90.png");
-  const rotated12 = join(root, "slow-rotated-12.png");
-  const cropped = join(root, "slow-cropped.png");
-  const tinted = join(root, "slow-tinted.png");
+  const resized = join(root, "resized.png");
+  const rotated90 = join(root, "rotated-90.png");
+  const rotated12 = join(root, "rotated-12.png");
+  const cropped = join(root, "cropped.png");
+  const tinted = join(root, "tinted.png");
   const unique = join(root, "unique.png");
 
-  const baseBuffer = Buffer.from(createSvg("ALPHA", "#4957a6"));
+  const baseBuffer = Buffer.from(createSvg("Photo A", "#4957a6"));
   await sharp(baseBuffer).png().toFile(base);
   await sharp(baseBuffer).resize(760, 570).png().toFile(resized);
   await sharp(baseBuffer).rotate(90).png().toFile(rotated90);
@@ -97,11 +96,11 @@ export async function generateCompactFixtureSet(targetDir) {
   await mkdir(root, { recursive: true });
 
   const base = join(root, "base.png");
-  const resized = join(root, "fast-resized.png");
-  const rotated12 = join(root, "slow-rotated-12.png");
+  const resized = join(root, "resized.png");
+  const rotated12 = join(root, "rotated-12.png");
   const unique = join(root, "unique.png");
 
-  const baseBuffer = Buffer.from(createSvg("ALPHA", "#4957a6"));
+  const baseBuffer = Buffer.from(createSvg("Photo A", "#4957a6"));
   await sharp(baseBuffer).png().toFile(base);
   await sharp(baseBuffer).resize(760, 570).png().toFile(resized);
   await sharp(baseBuffer).rotate(12, { background: "#fbf7ef" }).png().toFile(rotated12);

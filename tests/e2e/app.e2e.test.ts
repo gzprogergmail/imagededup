@@ -36,7 +36,7 @@ test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
 
     await page.goto(serverUrl);
     await expect(page.getByText(/JSONL logs:/)).toBeVisible();
-    await expect(page.getByText("Nothing to review yet.")).toBeVisible();
+    await expect(page.getByText("No results yet")).toBeVisible();
     await page.getByLabel("Folder").fill(fixtureDir);
     await expect(page.locator("#folder-preview")).toContainText("images ready to scan");
     await page.getByLabel("Folder").press("Enter");

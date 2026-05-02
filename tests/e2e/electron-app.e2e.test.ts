@@ -28,7 +28,7 @@ test("electron app loads the built renderer and responds to scan actions", async
   try {
     const window = app.windows()[0] ?? await app.firstWindow();
     await window.waitForSelector("#folder-input");
-    await expect(window.locator("#activity-list")).toContainText("Renderer initialized.");
+    await expect(window.locator("#activity-list")).toContainText("Ready to scan.");
     await expect(window.locator("#log-path-line")).toContainText("JSONL logs:");
 
     await window.locator("#folder-input").fill(fixtureDir);

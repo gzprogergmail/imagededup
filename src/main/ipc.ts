@@ -1,6 +1,5 @@
 import { dialog, ipcMain, shell, type WebContents } from "electron";
 import { z } from "zod";
-import { dirname } from "path";
 
 import { previewFolder, scanFast, type ScanCallbacks } from "./core/dedupService";
 import { getLogDirectory, logEvent } from "./logger";
@@ -43,14 +42,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("file:open", async (_event, filePath) => {
     const parsedPath = pathSchema.parse(filePath);
     await logEvent("main", "file.open", { path: parsedPath });
-    await shell.openPath(parsedPath);
+    const error = await shell.openPath(parsedPath);
+    if (error) throw new Error(error);
   });
 
   ipcMain.handle("folder:open", async (_event, filePath) => {
     const parsedPath = pathSchema.parse(filePath);
-    const folderPath = dirname(parsedPath);
-    await logEvent("main", "folder.open", { path: folderPath });
-    await shell.openPath(folderPath);
+    await logEvent("main", "folder.open", { path: parsedPath });
+    // showItemInFolder opens Explorer/Finder with the file highlighted — correct
+    // for both "Open Folder" (group card) and "Show in Folder" (file card).
+    shell.showItemInFolder(parsedPath);
   });
 
   ipcMain.handle("scan:cancel", async () => {

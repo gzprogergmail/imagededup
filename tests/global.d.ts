@@ -18,7 +18,6 @@ declare global {
       openFile: (filePath: string) => Promise<void>;
       openFolder: (filePath: string) => Promise<void>;
       startFastPass: (folder: string, threshold?: number) => Promise<unknown>;
-      startSlowPass: (folder: string) => Promise<unknown>;
     };
   }
 }

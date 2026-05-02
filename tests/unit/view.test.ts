@@ -30,7 +30,7 @@ const result: DetectionResult = {
   elapsedMs: 120,
   groups: [
     {
-      evidence: "hash deadbeef",
+      evidence: "Perceptual hash · deadbeef",
       files: ["C:\\fixtures\\a.png", "C:\\fixtures\\b.png"],
       id: "1",
       kind: "fast",
@@ -62,7 +62,7 @@ describe("renderer view", () => {
   it("renders helpful placeholder summary cards", () => {
     const markup = renderSummaryEmptyMarkup();
     expect(markup).toContain("No scan yet");
-    expect(markup).toContain("Fast Pass first");
+    expect(markup).toContain("perceptual hashing");
   });
 
   it("renders loading summary cards", () => {
@@ -86,7 +86,7 @@ describe("renderer view", () => {
   it("renders group cards with scores", () => {
     const markup = renderGroupMarkup(result.groups[0]!);
     expect(markup).toContain("score 0.91");
-    expect(markup).toContain("hash deadbeef");
+    expect(markup).toContain("Perceptual hash · deadbeef");
     expect(markup).toContain("Same folder");
   });
 
@@ -97,14 +97,14 @@ describe("renderer view", () => {
 
   it("renders an empty-state placeholder before a scan starts", () => {
     const markup = renderResultsEmptyMarkup();
-    expect(markup).toContain("Nothing to review yet.");
-    expect(markup).toContain("run Fast Pass");
+    expect(markup).toContain("No results yet");
+    expect(markup).toContain("Choose a folder and run a scan");
   });
 
   it("renders a loading-state result card", () => {
     const markup = renderResultsLoadingMarkup("Fast Pass", "C:\\fixtures\\dataset");
     expect(markup).toContain("Fast Pass is running");
-    expect(markup).toContain("Existing results are cleared");
+    expect(markup).toContain("Results from previous scans are cleared");
   });
 
   it("renders an error result card", () => {
@@ -158,5 +158,31 @@ describe("renderer view", () => {
     ];
     const markup = renderPartialResultsMarkup(groups, 15, 30);
     expect(markup).toContain("2 groups so far");
+  });
+
+  // Regression tests: ensure no inline onclick handlers (injection bug prevention)
+  it("renders group markup without any inline onclick handlers", () => {
+    const markup = renderGroupMarkup(result.groups[0]!);
+    expect(markup).not.toContain("onclick=");
+  });
+
+  it("renders group markup with data-action attributes for file actions", () => {
+    const markup = renderGroupMarkup(result.groups[0]!);
+    expect(markup).toContain('data-action="open-file"');
+    expect(markup).toContain('data-action="open-folder"');
+    expect(markup).toContain('data-action="copy-path"');
+  });
+
+  it("handles paths with apostrophes without breaking markup", () => {
+    const groupWithApostrophe = {
+      ...result.groups[0]!,
+      files: ["C:\\User's Photos\\photo.png", "C:\\User's Photos\\copy.png"],
+      representative: "C:\\User's Photos\\photo.png"
+    };
+    const markup = renderGroupMarkup(groupWithApostrophe);
+    // The apostrophe must be HTML-escaped in data-path, never as a raw ' in attribute value
+    expect(markup).not.toContain("data-path=\"C:\\User's");
+    expect(markup).toContain("&#39;");
+    expect(markup).not.toContain("onclick=");
   });
 });
