@@ -17,6 +17,7 @@ declare global {
       onScanUpdate: (callback: (update: ScanUpdate) => void) => () => void;
       openFile: (filePath: string) => Promise<void>;
       openFolder: (filePath: string) => Promise<void>;
+      deleteFile: (filePath: string) => Promise<void>;
       startFastPass: (folder: string, threshold?: number) => Promise<unknown>;
     };
   }

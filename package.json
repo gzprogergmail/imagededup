@@ -143,6 +143,7 @@
     "electron": "^41.3.0",
     "fast-glob": "^3.3.3",
     "imghash": "^1.1.0",
+    "photoswipe": "^5.4.4",
     "sharp": "^0.34.4",
     "ssim.js": "^3.5.0",
     "zod": "^4.1.12"

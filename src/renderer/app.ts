@@ -1,4 +1,5 @@
 import type { DetectionResult, ScanProgress, ScanUpdate } from "../shared/types";
+import PhotoSwipe from "photoswipe";
 import {
   renderFolderPreviewEmptyMarkup,
   renderFolderPreviewLoadingMarkup,
@@ -124,7 +125,54 @@ document.addEventListener("click", (event) => {
     }).catch(() => {
       updateStatus("Could not copy path to clipboard.", "warning");
     });
+  } else if (action === "delete-file") {
+    if (!confirm("Move this file to the trash?")) return;
+    const entry = target.closest<HTMLElement>(".group-file-entry");
+    void window.imageDedupApi.deleteFile(path).then(() => {
+      if (entry) entry.style.opacity = "0.5";
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Could not delete file.";
+      updateStatus(msg, "error");
+    });
   }
+});
+
+// ── PhotoSwipe lightbox ───────────────────────────────────────────────────────
+// Event-delegated: clicking any .group-thumb-item[data-pswp-file] opens a
+// full-screen lightbox showing all images in that duplicate group.
+resultsPanel.addEventListener("click", (event) => {
+  const thumbBtn = (event.target as Element).closest<HTMLElement>(".group-thumb-item[data-pswp-file]");
+  if (!thumbBtn) return;
+
+  const groupCard = thumbBtn.closest<HTMLElement>(".group-card");
+  if (!groupCard) return;
+
+  const allThumbs = [...groupCard.querySelectorAll<HTMLElement>(".group-thumb-item[data-pswp-file]")];
+  const startIndex = allThumbs.indexOf(thumbBtn);
+
+  const dataSource = allThumbs.map((btn) => {
+    const filePath = btn.dataset.pswpFile ?? "";
+    const encodedPath = encodeURI(filePath.replace(/\\/g, "/"));
+    const src = `file://${encodedPath}`;
+    const img = btn.querySelector<HTMLImageElement>("img");
+    // Use loaded thumbnail dimensions as a hint; PhotoSwipe will update once
+    // the full image loads. Fall back to a landscape default so layout works.
+    const width  = (img && img.naturalWidth  > 0) ? img.naturalWidth  : 3840;
+    const height = (img && img.naturalHeight > 0) ? img.naturalHeight : 2160;
+    return { src, width, height, alt: btn.title };
+  });
+
+  const pswp = new PhotoSwipe({
+    dataSource,
+    index: startIndex >= 0 ? startIndex : 0,
+    bgOpacity: 0.9,
+    spacing: 0.12,
+    allowPanToNext: true,
+    loop: true,
+    pinchToClose: true,
+    closeOnVerticalDrag: true,
+  });
+  pswp.init();
 });
 
 function handleScanUpdate(update: ScanUpdate): void {
@@ -156,7 +204,7 @@ function updateProgressUI(progress: ScanProgress): void {
 
   // Update status line with current file
   if (progress.currentPath) {
-    const fileName = progress.currentPath.split(/[\/\\]/).pop() || progress.currentPath;
+    const fileName = progress.currentPath.split(/[/\\]/).pop() || progress.currentPath;
     updateStatus(
       `Fast Pass: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"}) - ${shortenMiddle(fileName, 40)}`,
       "running"

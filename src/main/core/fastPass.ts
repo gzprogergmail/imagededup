@@ -277,6 +277,10 @@ export async function runFastPass(
           mihIndex.insert(hash, file.path);
         }
 
+        // Yield after doing synchronous indexing/union-find stuff
+        // to prevent the main process from freezing during heavily-cached or fast SSD runs.
+        await yieldToEventLoop();
+
         hashedCount++;
         onHashProgress?.(hashedCount, discoveredCount);
 

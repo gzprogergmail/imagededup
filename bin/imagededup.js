@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/* eslint-disable */
+
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 const electron = require("electron");

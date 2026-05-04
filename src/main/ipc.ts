@@ -54,6 +54,12 @@ export function registerIpcHandlers(): void {
     shell.showItemInFolder(parsedPath);
   });
 
+  ipcMain.handle("file:delete", async (_event, filePath) => {
+    const parsedPath = pathSchema.parse(filePath);
+    await logEvent("main", "file.delete", { path: parsedPath });
+    await shell.trashItem(parsedPath);
+  });
+
   ipcMain.handle("scan:cancel", async () => {
     if (activeScanCancel) {
       activeScanCancel();

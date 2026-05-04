@@ -28,6 +28,9 @@ test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
           getLogInfo: async () => ({ directory: "C:\\logs" }),
           logEvent: async () => undefined,
           onScanUpdate: undefined,
+          openFile: async () => undefined,
+          openFolder: async () => undefined,
+          deleteFile: async () => undefined,
           startFastPass: async () => nextFastResult
         };
       },
@@ -76,6 +79,9 @@ test("partial results appear during scan before final results arrive", async ({ 
             scanCallback = callback;
             return () => { scanCallback = null; };
           },
+          openFile: async () => undefined,
+          openFolder: async () => undefined,
+          deleteFile: async () => undefined,
           startFastPass: async () => {
             if (scanCallback) {
               const result = nextFastResult as { groups: unknown[]; scannedFileCount: number };

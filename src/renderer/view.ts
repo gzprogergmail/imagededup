@@ -262,12 +262,11 @@ export function renderGroupMarkup(group: DuplicateGroup): string {
 
   const removable = group.files.length - 1;
 
-  // Comparison thumbnail grid — all files shown side-by-side
+  // Comparison thumbnail grid — all files shown side-by-side (click opens PhotoSwipe lightbox)
   const thumbGrid = group.files.map((file) => `
     <button
       class="group-thumb-item"
-      data-action="open-file"
-      data-path="${escapeHtml(file)}"
+      data-pswp-file="${escapeHtml(file)}"
       title="${escapeHtml(fileNameForPath(file))}"
       type="button"
     >
@@ -347,6 +346,7 @@ function renderFileMarkup(file: string, representativeDirectory: string): string
         <div class="group-file-actions">
           <button class="btn-secondary btn-sm" data-action="open-file" data-path="${escapeHtml(file)}">Open</button>
           <button class="btn-secondary btn-sm" data-action="open-folder" data-path="${escapeHtml(file)}">Show in Folder</button>
+          <button class="btn-secondary btn-sm btn-danger" data-action="delete-file" data-path="${escapeHtml(file)}" title="Move to Trash">Trash</button>
           <button class="btn-secondary btn-sm btn-copy" data-action="copy-path" data-path="${escapeHtml(file)}" title="Copy full path">Copy Path</button>
         </div>
       </div>
