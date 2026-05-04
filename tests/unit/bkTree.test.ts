@@ -153,8 +153,8 @@ describe("BKTree accuracy", () => {
   }
 
   /** Brute-force: linear scan over all hashes for comparison. */
-  function bruteForceQuery(hashes: string[], query: string, maxDist: number): string[] {
-    return hashes.filter((h) => hammingDistance(h, query) <= maxDist);
+  function bruteForceHashes(hashes: string[], query: string, maxDist: number): Set<string> {
+    return new Set(hashes.filter((h) => hammingDistance(h, query) <= maxDist));
   }
 
   it("matches brute-force results for 200 hashes across 20 query probes (no false negatives or positives)", () => {
@@ -170,11 +170,9 @@ describe("BKTree accuracy", () => {
     // Use 20 probes from a different range to get realistic hit/miss mix
     for (let probe = 0; probe < 20; probe++) {
       const queryHash = deterministicHash(N + probe * 7);
-      const bfPaths = new Set(bruteForceQuery(hashes, queryHash, THRESHOLD));
-      const treePaths = new Set(tree.query(queryHash, THRESHOLD).map((r) => r.filePath));
 
       // Map BK-tree filePaths to the hash index to compare hash sets
-      const bfHashes = new Set(hashes.filter((h) => hammingDistance(h, queryHash) <= THRESHOLD));
+      const bfHashes = bruteForceHashes(hashes, queryHash, THRESHOLD);
       const treeHashes = new Set(tree.query(queryHash, THRESHOLD).map((r) => r.hash));
 
       // No false negatives: every brute-force match must appear in BK-tree results

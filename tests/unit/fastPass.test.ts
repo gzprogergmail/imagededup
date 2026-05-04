@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { discoverImages } from "../../src/main/core/imageDiscovery";
 import { dctHash, runFastPass, HAMMING_THRESHOLD, type HashProvider } from "../../src/main/core/fastPass";
@@ -29,9 +29,7 @@ describe("dctHash", () => {
   it("returns the same hash for a horizontally flipped uniform-gradient image", () => {
     // A left-to-right gradient flipped becomes right-to-left — low-freq DCT is symmetric
     // so at least the DC-excluded mean threshold should produce the same bits.
-    const gradient = Uint8Array.from({ length: 32 * 32 }, (_, i) => Math.floor((i % 32) * 8));
     const flipped = Uint8Array.from({ length: 32 * 32 }, (_, i) => {
-      const row = Math.floor(i / 32);
       const col = 31 - (i % 32);
       return Math.floor(col * 8);
     });

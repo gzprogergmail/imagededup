@@ -2,6 +2,10 @@ import { fireEvent, waitFor } from "@testing-library/dom";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("photoswipe", () => ({
+  default: vi.fn(function() { return { init: vi.fn() }; })
+}));
+
 const previewResult = {
   folder: "C:\\fixtures",
   imageCount: 2,
@@ -73,6 +77,7 @@ describe("renderer app", () => {
           logEvent: vi.fn().mockResolvedValue(undefined),
           openFile: vi.fn().mockResolvedValue(undefined),
           openFolder: vi.fn().mockResolvedValue(undefined),
+          deleteFile: vi.fn().mockResolvedValue(undefined),
           startFastPass: vi.fn().mockResolvedValue(fastResult)
         }
       })
@@ -450,5 +455,80 @@ describe("renderer app", () => {
     await waitFor(() => {
       expect(document.getElementById("status-line")?.textContent).toContain("Could not copy path to clipboard.");
     });
+  });
+
+  it("calls deleteFile and dims the entry when Trash is confirmed", async () => {
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const trashBtn = document.querySelector('[data-action="delete-file"]') as HTMLElement | null;
+    expect(trashBtn).not.toBeNull();
+    fireEvent.click(trashBtn!);
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.deleteFile).toHaveBeenCalledWith(trashBtn!.dataset.path);
+      const entry = trashBtn!.closest(".group-file-entry") as HTMLElement | null;
+      expect(entry?.style.opacity).toBe("0.5");
+    });
+  });
+
+  it("does not call deleteFile when Trash is cancelled", async () => {
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const trashBtn = document.querySelector('[data-action="delete-file"]') as HTMLElement | null;
+    fireEvent.click(trashBtn!);
+
+    expect(window.imageDedupApi.deleteFile).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when deleteFile fails", async () => {
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    vi.mocked(window.imageDedupApi.deleteFile).mockRejectedValueOnce(new Error("Access denied"));
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const trashBtn = document.querySelector('[data-action="delete-file"]') as HTMLElement | null;
+    fireEvent.click(trashBtn!);
+
+    await waitFor(() => {
+      expect(document.getElementById("status-line")?.textContent).toContain("Access denied");
+    });
+  });
+
+  it("opens PhotoSwipe lightbox when a thumbnail is clicked", async () => {
+    const { default: PhotoSwipe } = await import("photoswipe");
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
+    });
+
+    const thumb = document.querySelector('[data-pswp-file]') as HTMLElement | null;
+    expect(thumb).not.toBeNull();
+    fireEvent.click(thumb!);
+
+    expect(vi.mocked(PhotoSwipe)).toHaveBeenCalledWith(
+      expect.objectContaining({ dataSource: expect.any(Array) })
+    );
   });
 });

@@ -93,7 +93,7 @@ test("partial results appear during scan before final results arrive", async ({ 
                 totalFiles: result.scannedFileCount
               });
               // Then emit the complete result after a short delay
-              await new Promise<void>(res => setTimeout(res, 50));
+              await new Promise<void>(res => setTimeout(res, 400));
               scanCallback({ type: "complete", result: nextFastResult });
             }
             return null;

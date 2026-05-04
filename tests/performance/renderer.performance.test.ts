@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderGroupMarkup } from "../../src/renderer/view";
 import { dctHash, ImghashProvider, HAMMING_THRESHOLD } from "../../src/main/core/fastPass";
-import { BKTree, MIHIndex, hammingDistance } from "../../src/main/core/bkTree";
+import { BKTree, MIHIndex } from "../../src/main/core/bkTree";
 import type { DuplicateGroup } from "../../src/shared/types";
 
 function createGroup(index: number): DuplicateGroup {

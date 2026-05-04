@@ -85,7 +85,7 @@ export function renderResultsEmptyMarkup(): string {
 }
 
 export function renderPartialResultsMarkup(
-  groups: import("../shared/types").DuplicateGroup[],
+  groups: DuplicateGroup[],
   scannedSoFar: number,
   totalFiles: number
 ): string {

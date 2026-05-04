@@ -14,8 +14,7 @@
  *  sample-images/large-files/small/small_seed<N>_1920x1280.jpg
  */
 
-import { createWriteStream } from "node:fs";
-import { mkdir, stat, unlink } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import https from "node:https";
