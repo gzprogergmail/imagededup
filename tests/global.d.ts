@@ -1,4 +1,4 @@
-import type { FolderPreview, ScanUpdate } from "../src/shared/types";
+import type { HashCacheInfo, FolderPreview, ScanUpdate } from "../src/shared/types";
 
 export {};
 
@@ -7,6 +7,8 @@ declare global {
     imageDedupApi: {
       browseFolder: () => Promise<string | null>;
       cancelScan: () => Promise<void>;
+      clearCache: (folder: string) => Promise<HashCacheInfo>;
+      getCacheInfo: (folder: string) => Promise<HashCacheInfo>;
       getFolderPreview: (folder: string) => Promise<FolderPreview>;
       getLogInfo: () => Promise<{ directory: string }>;
       logEvent: (
@@ -18,7 +20,8 @@ declare global {
       openFile: (filePath: string) => Promise<void>;
       openFolder: (filePath: string) => Promise<void>;
       deleteFile: (filePath: string) => Promise<void>;
-      startFastPass: (folder: string, threshold?: number) => Promise<unknown>;
+      rematchFastPass: (folder: string, threshold?: number) => Promise<unknown>;
+      startFastPass: (folder: string, threshold?: number, options?: { forceRefreshCache?: boolean }) => Promise<unknown>;
     };
   }
 }

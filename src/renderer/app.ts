@@ -1,4 +1,4 @@
-import type { DetectionResult, ScanProgress, ScanUpdate } from "../shared/types";
+import type { DetectionResult, HashCacheInfo, ScanProgress, ScanUpdate } from "../shared/types";
 import PhotoSwipe from "photoswipe";
 import {
   renderFolderPreviewEmptyMarkup,
@@ -20,6 +20,10 @@ type StatusTone = "idle" | "running" | "success" | "warning" | "error";
 const folderInput = mustElement<HTMLInputElement>("folder-input");
 const thresholdInput = mustElement<HTMLInputElement>("threshold-input");
 const thresholdDisplay = mustElement<HTMLElement>("threshold-display");
+const applyThresholdButton = mustElement<HTMLButtonElement>("apply-threshold-button");
+const refreshCacheButton = mustElement<HTMLButtonElement>("refresh-cache-button");
+const clearCacheButton = mustElement<HTMLButtonElement>("clear-cache-button");
+const cacheStatusLine = mustElement<HTMLElement>("cache-status-line");
 const phaseStepper = mustElement<HTMLElement>("phase-stepper");
 const browseButton = mustElement<HTMLButtonElement>("browse-button");
 const fastButton = mustElement<HTMLButtonElement>("fast-button");
@@ -39,6 +43,9 @@ const resultsPanel = mustElement<HTMLDivElement>("results-panel");
 const activityEntries: Array<{ time: string; text: string }> = [];
 
 let isScanning = false;
+let activeScanFolder: string | null = null;
+let lastCompletedFolder: string | null = null;
+let cacheInfoRequestId = 0;
 let folderPreviewRequestId = 0;
 let folderPreviewTimer: number | null = null;
 let unsubscribeScanUpdates: (() => void) | null = null;
@@ -73,6 +80,13 @@ folderInput.addEventListener("input", () => {
 
 thresholdInput.addEventListener("input", () => {
   thresholdDisplay.textContent = thresholdInput.value;
+  updateCacheControls();
+});
+
+thresholdInput.addEventListener("change", () => {
+  if (canAutoRematchCurrentFolder()) {
+    void rematchFromCache("auto");
+  }
 });
 
 folderInput.addEventListener("keydown", (event) => {
@@ -95,6 +109,18 @@ window.addEventListener("keydown", (event) => {
 
 fastButton.addEventListener("click", async () => {
   await runPass();
+});
+
+applyThresholdButton.addEventListener("click", async () => {
+  await rematchFromCache("manual");
+});
+
+refreshCacheButton.addEventListener("click", async () => {
+  await runPass({ forceRefreshCache: true });
+});
+
+clearCacheButton.addEventListener("click", async () => {
+  await clearCurrentCache();
 });
 
 cancelButton.addEventListener("click", async () => {
@@ -245,6 +271,8 @@ function formatProgressText(progress: ScanProgress): string {
 
 function handleScanComplete(result: DetectionResult): void {
   isScanning = false;
+  lastCompletedFolder = activeScanFolder ?? folderInput.value.trim();
+  activeScanFolder = null;
 
   if (unsubscribeScanUpdates) {
     unsubscribeScanUpdates();
@@ -269,10 +297,12 @@ function handleScanComplete(result: DetectionResult): void {
   });
 
   setBusy(false);
+  void refreshCacheInfo(lastCompletedFolder);
 }
 
 function handleScanError(message: string): void {
   isScanning = false;
+  activeScanFolder = null;
 
   if (unsubscribeScanUpdates) {
     unsubscribeScanUpdates();
@@ -290,6 +320,7 @@ function handleScanError(message: string): void {
 
 function handleScanCancelled(): void {
   isScanning = false;
+  activeScanFolder = null;
 
   if (unsubscribeScanUpdates) {
     unsubscribeScanUpdates();
@@ -300,7 +331,7 @@ function handleScanCancelled(): void {
   setBusy(false);
 }
 
-async function runPass(): Promise<void> {
+async function runPass(options: { forceRefreshCache?: boolean } = {}): Promise<void> {
   const folder = folderInput.value.trim();
   if (!folder) {
     folderInput.setAttribute("aria-invalid", "true");
@@ -320,18 +351,24 @@ async function runPass(): Promise<void> {
   unsubscribeScanUpdates = supportsScanUpdates ? window.imageDedupApi.onScanUpdate(handleScanUpdate) : null;
 
   isScanning = true;
+  activeScanFolder = folder;
 
   folderInput.removeAttribute("aria-invalid");
   syncSelectedFolder(folder);
   renderPendingScanState(folder);
   scanStartTime = Date.now();
   setBusy(true);
-  updateStatus("Fast Pass is starting...", "running");
-  recordActivity(`Fast Pass started for ${shortenMiddle(folder, 60)}.`);
-  void logUiEvent("scan.started", { folder, mode: "fast" });
+  updateStatus(options.forceRefreshCache ? "Fast Pass is refreshing the hash cache..." : "Fast Pass is starting...", "running");
+  recordActivity(
+    options.forceRefreshCache
+      ? `Cache refresh started for ${shortenMiddle(folder, 60)}.`
+      : `Fast Pass started for ${shortenMiddle(folder, 60)}.`
+  );
+  void logUiEvent("scan.started", { folder, forceRefreshCache: options.forceRefreshCache === true, mode: "fast" });
 
   try {
-    const result = await window.imageDedupApi.startFastPass(folder, Number(thresholdInput.value)) as DetectionResult | null;
+    const scanOptions = options.forceRefreshCache ? { forceRefreshCache: true } : undefined;
+    const result = await window.imageDedupApi.startFastPass(folder, Number(thresholdInput.value), scanOptions) as DetectionResult | null;
 
     if (!supportsScanUpdates) {
       if (result) {
@@ -347,6 +384,51 @@ async function runPass(): Promise<void> {
 
     const message = error instanceof Error ? error.message : String(error);
     handleScanError(message);
+  }
+}
+
+async function rematchFromCache(source: "auto" | "manual"): Promise<void> {
+  const folder = folderInput.value.trim();
+  if (!folder || isScanning) {
+    return;
+  }
+
+  folderInput.removeAttribute("aria-invalid");
+  setCacheActionsBusy(true);
+  activeScanFolder = folder;
+  updateStatus("Applying threshold from cached hashes...", "running");
+  recordActivity(`Threshold rematch started for ${shortenMiddle(folder, 60)}.`);
+  void logUiEvent("scan.rematch.started", {
+    folder,
+    hammingThreshold: Number(thresholdInput.value),
+    source
+  });
+
+  try {
+    const result = await window.imageDedupApi.rematchFastPass(folder, Number(thresholdInput.value)) as DetectionResult;
+    lastCompletedFolder = folder;
+    activeScanFolder = null;
+    renderSummary(result);
+    renderResults(result);
+    updateStatus(
+      `Threshold applied from cache in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
+      result.warnings.length === 0 ? "success" : "warning"
+    );
+    recordActivity(`Threshold rematch finished with ${result.groups.length} groups.`);
+    void logUiEvent("scan.rematch.completed", {
+      elapsedMs: result.elapsedMs,
+      groupCount: result.groups.length,
+      scannedFileCount: result.scannedFileCount
+    });
+    void refreshCacheInfo(folder);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    activeScanFolder = null;
+    updateStatus(`Cached threshold rematch failed: ${message}`, "warning");
+    recordActivity(`Cached threshold rematch failed: ${message}`);
+    void logUiEvent("scan.rematch.failed", { error: message }, "warn");
+  } finally {
+    setCacheActionsBusy(false);
   }
 }
 
@@ -406,6 +488,7 @@ function setBusy(busy: boolean): void {
   progressText.dataset.visible = String(busy);
   progressPercent.dataset.visible = String(busy);
   phaseStepper.dataset.visible = String(busy);
+  updateCacheControls();
 
   if (busy) {
     fastButton.textContent = "Fast Pass Running";
@@ -444,6 +527,7 @@ async function initialize(): Promise<void> {
   updateStatus("Choose a folder, then start with Fast Pass.", "idle");
   recordActivity("Ready to scan.");
   void logUiEvent("renderer.initialized");
+  updateCacheControls();
 
   try {
     const { directory } = await window.imageDedupApi.getLogInfo();
@@ -472,12 +556,15 @@ function syncSelectedFolder(folder: string): void {
     selectedFolder.removeAttribute("title");
     folderPreview.dataset.state = "empty";
     folderPreview.innerHTML = renderFolderPreviewEmptyMarkup("Choose a folder to preview a few images before scanning.");
+    cacheStatusLine.textContent = "Cache is ready after a folder is scanned.";
+    updateCacheControls();
     return;
   }
 
   selectedFolder.dataset.visible = "true";
   selectedFolder.textContent = `Selected folder: ${shortenMiddle(folder, 76)}`;
   selectedFolder.title = folder;
+  updateCacheControls();
 }
 
 function queueFolderPreview(folder: string): void {
@@ -511,6 +598,7 @@ async function loadFolderPreview(folder: string, requestId: number): Promise<voi
 
     folderPreview.dataset.state = preview.imageCount === 0 ? "empty" : "ready";
     folderPreview.innerHTML = renderFolderPreviewMarkup(preview);
+    void refreshCacheInfo(folder);
   } catch {
     if (requestId !== folderPreviewRequestId) {
       return;
@@ -518,7 +606,92 @@ async function loadFolderPreview(folder: string, requestId: number): Promise<voi
 
     folderPreview.dataset.state = "empty";
     folderPreview.innerHTML = renderFolderPreviewEmptyMarkup("Use an existing folder path to preview its image files.");
+    cacheStatusLine.textContent = "Cache unavailable until the folder path is valid.";
   }
+}
+
+async function clearCurrentCache(): Promise<void> {
+  const folder = folderInput.value.trim();
+  if (!folder || isScanning) {
+    return;
+  }
+
+  if (!confirm("Clear cached image hashes for this folder?")) {
+    return;
+  }
+
+  setCacheActionsBusy(true);
+  updateStatus("Clearing hash cache...", "running");
+  try {
+    const info = await window.imageDedupApi.clearCache(folder);
+    cacheStatusLine.textContent = formatCacheInfo(info);
+    updateStatus("Hash cache cleared for the selected folder.", "success");
+    recordActivity(`Cache cleared for ${shortenMiddle(folder, 60)}.`);
+    void logUiEvent("cache.cleared", { folder });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    updateStatus(`Could not clear cache: ${message}`, "error");
+    recordActivity(`Cache clear failed: ${message}`);
+    void logUiEvent("cache.clear.failed", { error: message }, "error");
+  } finally {
+    setCacheActionsBusy(false);
+  }
+}
+
+async function refreshCacheInfo(folder = folderInput.value.trim()): Promise<void> {
+  cacheInfoRequestId += 1;
+  const requestId = cacheInfoRequestId;
+  if (!folder) {
+    cacheStatusLine.textContent = "Cache is ready after a folder is scanned.";
+    updateCacheControls();
+    return;
+  }
+
+  try {
+    const info = await window.imageDedupApi.getCacheInfo(folder);
+    if (requestId !== cacheInfoRequestId) {
+      return;
+    }
+    cacheStatusLine.textContent = formatCacheInfo(info);
+  } catch {
+    if (requestId !== cacheInfoRequestId) {
+      return;
+    }
+    cacheStatusLine.textContent = "Cache unavailable until the folder path is valid.";
+  } finally {
+    updateCacheControls();
+  }
+}
+
+function formatCacheInfo(info: HashCacheInfo): string {
+  if (info.currentImageCount === 0) {
+    return `Cache: no images in selected folder. TTL ${info.ttlDays} days.`;
+  }
+
+  const missing = info.missingEntryCount > 0 ? `, ${info.missingEntryCount} missing` : "";
+  const stale = info.staleEntryCount > 0 ? `, ${info.staleEntryCount} stale` : "";
+  return `Cache: ${info.validEntryCount}/${info.currentImageCount} image hashes ready${missing}${stale}. TTL ${info.ttlDays} days.`;
+}
+
+function canAutoRematchCurrentFolder(): boolean {
+  const folder = folderInput.value.trim();
+  return Boolean(folder && !isScanning && lastCompletedFolder === folder);
+}
+
+function setCacheActionsBusy(busy: boolean): void {
+  applyThresholdButton.disabled = busy;
+  refreshCacheButton.disabled = busy;
+  clearCacheButton.disabled = busy;
+  if (!busy) {
+    updateCacheControls();
+  }
+}
+
+function updateCacheControls(): void {
+  const hasFolder = folderInput.value.trim().length > 0;
+  applyThresholdButton.disabled = isScanning || !hasFolder;
+  refreshCacheButton.disabled = isScanning || !hasFolder;
+  clearCacheButton.disabled = isScanning || !hasFolder;
 }
 
 function recordActivity(text: string): void {

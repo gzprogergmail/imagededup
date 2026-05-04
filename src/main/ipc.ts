@@ -1,12 +1,22 @@
 import { dialog, ipcMain, shell, type WebContents } from "electron";
 import { z } from "zod";
 
-import { previewFolder, scanFast, type ScanCallbacks } from "./core/dedupService";
+import {
+  clearHashCache,
+  inspectHashCache,
+  previewFolder,
+  rematchFastFromCache,
+  scanFast,
+  type ScanCallbacks
+} from "./core/dedupService";
 import { getLogDirectory, logEvent } from "./logger";
 import type { ScanProgress } from "../shared/types";
 
 const folderSchema = z.string().trim().min(1);
 const pathSchema = z.string().trim().min(1);
+const scanOptionsSchema = z.object({
+  forceRefreshCache: z.boolean().optional()
+}).optional();
 
 let activeScanCancel: (() => void) | null = null;
 
@@ -39,6 +49,29 @@ export function registerIpcHandlers(): void {
     return preview;
   });
 
+  ipcMain.handle("cache:info", async (_event, folder) => {
+    const parsedFolder = folderSchema.parse(folder);
+    const info = await inspectHashCache(parsedFolder);
+    await logEvent("main", "cache.info.completed", {
+      currentImageCount: info.currentImageCount,
+      folder: info.folder,
+      missingEntryCount: info.missingEntryCount,
+      staleEntryCount: info.staleEntryCount,
+      validEntryCount: info.validEntryCount
+    });
+    return info;
+  });
+
+  ipcMain.handle("cache:clear", async (_event, folder) => {
+    const parsedFolder = folderSchema.parse(folder);
+    const info = await clearHashCache(parsedFolder);
+    await logEvent("main", "cache.clear.completed", {
+      currentImageCount: info.currentImageCount,
+      folder: info.folder
+    });
+    return info;
+  });
+
   ipcMain.handle("file:open", async (_event, filePath) => {
     const parsedPath = pathSchema.parse(filePath);
     await logEvent("main", "file.open", { path: parsedPath });
@@ -68,10 +101,15 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle("scan:fast", async (event, folder, threshold) => {
+  ipcMain.handle("scan:fast", async (event, folder, threshold, options) => {
     const parsedFolder = folderSchema.parse(folder);
     const parsedThreshold = typeof threshold === "number" ? Math.max(0, Math.min(16, Math.round(threshold))) : undefined;
-    await logEvent("main", "scan.fast.started", { folder: parsedFolder, hammingThreshold: parsedThreshold });
+    const parsedOptions = scanOptionsSchema.parse(options) ?? {};
+    await logEvent("main", "scan.fast.started", {
+      folder: parsedFolder,
+      forceRefreshCache: parsedOptions.forceRefreshCache === true,
+      hammingThreshold: parsedThreshold
+    });
 
     const webContents = event.sender;
 
@@ -95,7 +133,7 @@ export function registerIpcHandlers(): void {
     };
 
     try {
-      const result = await scanFast(parsedFolder, callbacks, parsedThreshold);
+      const result = await scanFast(parsedFolder, callbacks, parsedThreshold, parsedOptions);
 
       if (isCancelled) {
         webContents.send("scan:update", { type: "cancelled" });
@@ -118,6 +156,30 @@ export function registerIpcHandlers(): void {
       throw error;
     } finally {
       activeScanCancel = null;
+    }
+  });
+
+  ipcMain.handle("scan:rematch", async (event, folder, threshold) => {
+    const parsedFolder = folderSchema.parse(folder);
+    const parsedThreshold = typeof threshold === "number" ? Math.max(0, Math.min(16, Math.round(threshold))) : undefined;
+    await logEvent("main", "scan.rematch.started", { folder: parsedFolder, hammingThreshold: parsedThreshold });
+
+    const webContents = event.sender;
+    try {
+      const result = await rematchFastFromCache(parsedFolder, parsedThreshold);
+      webContents.send("scan:update", { type: "complete", result });
+      await logEvent("main", "scan.rematch.completed", {
+        elapsedMs: result.elapsedMs,
+        folder: parsedFolder,
+        groupCount: result.groups.length,
+        scannedFileCount: result.scannedFileCount
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      webContents.send("scan:update", { type: "error", message });
+      await logEvent("main", "scan.rematch.failed", { error, folder: parsedFolder }, "error");
+      throw error;
     }
   });
 

@@ -3,8 +3,22 @@ import { resolve } from "node:path";
 
 import { logEvent } from "../logger";
 import { discoverImages, streamImages } from "./imageDiscovery";
-import { runFastPass } from "./fastPass";
-import type { ScanProgress, ImageRecord, DetectionResult, DuplicateGroup, FolderPreview } from "../../shared/types";
+import { buildDuplicateGroupsFromHashes, ImghashProvider, runFastPass } from "./fastPass";
+import {
+  CachedHashProvider,
+  clearFolderHashCache,
+  getFolderHashCacheInfo,
+  readValidCachedHashes
+} from "./hashCache";
+import type {
+  ScanProgress,
+  ImageRecord,
+  DetectionResult,
+  DuplicateGroup,
+  FolderPreview,
+  HashCacheInfo,
+  ScanCacheStats
+} from "../../shared/types";
 
 export interface ScanCallbacks {
   onProgress: (progress: ScanProgress) => void;
@@ -12,20 +26,70 @@ export interface ScanCallbacks {
   isCancelled: () => boolean;
 }
 
-export async function scanFast(folder: string, callbacks?: ScanCallbacks, hammingThreshold?: number): Promise<DetectionResult> {
-  await logEvent("scan", "fast.requested", { folder });
+export interface ScanFastOptions {
+  forceRefreshCache?: boolean;
+}
+
+export async function scanFast(
+  folder: string,
+  callbacks?: ScanCallbacks,
+  hammingThreshold?: number,
+  options: ScanFastOptions = {}
+): Promise<DetectionResult> {
+  await logEvent("scan", "fast.requested", { folder, forceRefreshCache: options.forceRefreshCache === true });
   const absoluteFolder = await validateFolder(folder);
 
   const result = callbacks
-    ? await runFastPassWithProgress(absoluteFolder, callbacks, hammingThreshold)
-    : await runFastPass(streamImages(absoluteFolder), undefined, hammingThreshold);
+    ? await runFastPassWithProgress(absoluteFolder, callbacks, hammingThreshold, options)
+    : await runFastPassCached(absoluteFolder, hammingThreshold, options);
 
   await logEvent("scan", "fast.completed", {
+    cacheStats: result.cacheStats,
     elapsedMs: result.elapsedMs,
     fileCount: result.scannedFileCount,
     groupCount: result.groups.length,
     warnings: result.warnings
   });
+  return result;
+}
+
+export async function rematchFastFromCache(folder: string, hammingThreshold?: number): Promise<DetectionResult> {
+  await logEvent("scan", "fast.rematch.requested", { folder, hammingThreshold });
+  const absoluteFolder = await validateFolder(folder);
+  const files = await discoverImages(absoluteFolder);
+  const startedAt = performance.now();
+  const cached = await readValidCachedHashes(absoluteFolder, files);
+
+  if (cached.missingCount > 0 || cached.staleCount > 0) {
+    const totalUnavailable = cached.missingCount + cached.staleCount;
+    throw new Error(
+      `Cache is missing or stale for ${totalUnavailable} of ${files.length} images. Run Fast Pass or Force Update Cache first.`
+    );
+  }
+
+  const groups = buildDuplicateGroupsFromHashes(cached.records, hammingThreshold);
+  const result: DetectionResult = {
+    cacheStats: {
+      errors: 0,
+      hits: cached.records.length,
+      misses: cached.missingCount,
+      stale: cached.staleCount,
+      writes: 0
+    },
+    elapsedMs: Math.round(performance.now() - startedAt),
+    groups,
+    library: "imghash + flat-cache",
+    mode: "fast",
+    scannedFileCount: files.length,
+    warnings: []
+  };
+
+  await logEvent("scan", "fast.rematch.completed", {
+    elapsedMs: result.elapsedMs,
+    fileCount: result.scannedFileCount,
+    groupCount: result.groups.length
+  });
+
   return result;
 }
 
@@ -38,14 +102,29 @@ export async function previewFolder(folder: string): Promise<FolderPreview> {
   };
 }
 
+export async function inspectHashCache(folder: string): Promise<HashCacheInfo> {
+  const files = await listImages(folder);
+  return getFolderHashCacheInfo(resolve(folder), files);
+}
+
+export async function clearHashCache(folder: string): Promise<HashCacheInfo> {
+  const absoluteFolder = await validateFolder(folder);
+  await clearFolderHashCache(absoluteFolder);
+  await logEvent("scan", "cache.cleared", { folder: absoluteFolder });
+  const files = await discoverImages(absoluteFolder);
+  return getFolderHashCacheInfo(absoluteFolder, files);
+}
+
 async function runFastPassWithProgress(
   folder: string,
   callbacks: ScanCallbacks,
-  hammingThreshold?: number
+  hammingThreshold?: number,
+  options: ScanFastOptions = {}
 ): Promise<DetectionResult> {
-  const { ImghashProvider } = await import("./fastPass");
-
   const startTime = performance.now();
+  const hashProvider = new CachedHashProvider(folder, new ImghashProvider(), {
+    forceRefresh: options.forceRefreshCache === true
+  });
   let hashedCount = 0;
   let discoveredCount = 0;
   let timeToFirstFileMs: number | null = null;
@@ -80,7 +159,7 @@ async function runFastPassWithProgress(
 
   const result = await runFastPass(
     streamImages(folder),
-    new ImghashProvider(),
+    hashProvider,
     hammingThreshold,
     (done, total) => {
       emitProgress("comparing", done, total);
@@ -100,9 +179,12 @@ async function runFastPassWithProgress(
     (groups, scannedSoFar, totalFiles) => {
       callbacks.onPartialGroups?.(groups, scannedSoFar, totalFiles);
     }
-  );
+  ).finally(async () => {
+    await hashProvider.flush({ pruneMissingFiles: !callbacks.isCancelled() });
+  });
 
   await logEvent("scan", "fast.timing", {
+    cacheStats: hashProvider.stats,
     totalMs: Math.round(ms()),
     filesDiscovered: discoveredCount,
     timeToFirstFile_ms: timeToFirstFileMs !== null ? Math.round(timeToFirstFileMs) : null,
@@ -111,7 +193,35 @@ async function runFastPassWithProgress(
     note: "timeToFirstFile=glob/network latency; hashingPhase=per-file I/O cost x files/concurrency"
   });
 
-  return result;
+  return withCacheStats(result, hashProvider.stats);
+}
+
+async function runFastPassCached(
+  folder: string,
+  hammingThreshold?: number,
+  options: ScanFastOptions = {}
+): Promise<DetectionResult> {
+  const hashProvider = new CachedHashProvider(folder, new ImghashProvider(), {
+    forceRefresh: options.forceRefreshCache === true
+  });
+
+  const result = await runFastPass(
+    streamImages(folder),
+    hashProvider,
+    hammingThreshold
+  ).finally(async () => {
+    await hashProvider.flush({ pruneMissingFiles: true });
+  });
+
+  return withCacheStats(result, hashProvider.stats);
+}
+
+function withCacheStats(result: DetectionResult, cacheStats: ScanCacheStats): DetectionResult {
+  return {
+    ...result,
+    cacheStats,
+    library: "imghash + flat-cache"
+  };
 }
 
 async function validateFolder(folder: string): Promise<string> {

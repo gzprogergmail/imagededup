@@ -29,6 +29,19 @@ const fastResult = {
   warnings: []
 };
 
+const cacheInfo = {
+  cacheFilePath: "C:\\cache\\folder-abc",
+  currentImageCount: 2,
+  folder: "C:\\fixtures",
+  missingEntryCount: 0,
+  sizeBytes: 512,
+  staleEntryCount: 0,
+  totalEntries: 2,
+  ttlDays: 365,
+  updatedAt: "2026-05-04T00:00:00.000Z",
+  validEntryCount: 2
+};
+
 const warningResult = {
   ...fastResult,
   mode: "fast" as const,
@@ -46,6 +59,10 @@ describe("renderer app", () => {
         <input id="folder-input" />
         <input id="threshold-input" type="range" min="0" max="16" value="5" />
         <span id="threshold-display">5</span>
+        <button id="apply-threshold-button">Apply Threshold</button>
+        <button id="refresh-cache-button">Force Update Cache</button>
+        <button id="clear-cache-button">Clear Cache</button>
+        <div id="cache-status-line"></div>
         <div id="phase-stepper" data-visible="false"></div>
         <button id="browse-button">Browse</button>
         <button id="fast-button">Start Fast Pass</button>
@@ -72,12 +89,15 @@ describe("renderer app", () => {
         imageDedupApi: {
           browseFolder: vi.fn().mockResolvedValue("C:\\fixtures"),
           cancelScan: vi.fn().mockResolvedValue(undefined),
+          clearCache: vi.fn().mockResolvedValue(cacheInfo),
+          getCacheInfo: vi.fn().mockResolvedValue(cacheInfo),
           getFolderPreview: vi.fn().mockResolvedValue(previewResult),
           getLogInfo: vi.fn().mockResolvedValue({ directory: "C:\\logs" }),
           logEvent: vi.fn().mockResolvedValue(undefined),
           openFile: vi.fn().mockResolvedValue(undefined),
           openFolder: vi.fn().mockResolvedValue(undefined),
           deleteFile: vi.fn().mockResolvedValue(undefined),
+          rematchFastPass: vi.fn().mockResolvedValue(fastResult),
           startFastPass: vi.fn().mockResolvedValue(fastResult)
         }
       })
@@ -139,8 +159,94 @@ describe("renderer app", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(window.imageDedupApi.startFastPass).toHaveBeenCalledWith("C:\\fixtures", expect.any(Number));
+      expect(window.imageDedupApi.startFastPass).toHaveBeenCalledWith("C:\\fixtures", expect.any(Number), undefined);
       expect(document.getElementById("status-line")?.textContent).toContain("finished");
+    });
+  });
+
+  it("shortens long selected folders and shows empty cache info", async () => {
+    const longFolder = `C:\\fixtures\\${"nested\\".repeat(20)}photos`;
+    vi.mocked(window.imageDedupApi.browseFolder).mockResolvedValueOnce(longFolder);
+    vi.mocked(window.imageDedupApi.getFolderPreview).mockResolvedValueOnce({
+      folder: longFolder,
+      imageCount: 0,
+      samplePaths: []
+    });
+    vi.mocked(window.imageDedupApi.getCacheInfo).mockResolvedValueOnce({
+      ...cacheInfo,
+      currentImageCount: 0,
+      folder: longFolder,
+      missingEntryCount: 0,
+      totalEntries: 0,
+      validEntryCount: 0
+    });
+
+    await import("../../src/renderer/app");
+    fireEvent.click(document.getElementById("browse-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("selected-folder")?.textContent).toContain("…");
+      expect(document.getElementById("cache-status-line")?.textContent).toContain("no images");
+    });
+  });
+
+  it("shows cache info failure while keeping a valid folder preview", async () => {
+    vi.mocked(window.imageDedupApi.getCacheInfo).mockRejectedValueOnce(new Error("cache unavailable"));
+    await import("../../src/renderer/app");
+
+    const input = document.getElementById("folder-input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "C:\\fixtures" } });
+
+    await waitFor(() => {
+      expect(document.getElementById("folder-preview")?.textContent).toContain("images ready to scan");
+      expect(document.getElementById("cache-status-line")?.textContent).toContain("Cache unavailable");
+    });
+  });
+
+  it("rematches from cache when the threshold changes after a completed scan", async () => {
+    await import("../../src/renderer/app");
+    const folder = document.getElementById("folder-input") as HTMLInputElement;
+    folder.value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass finished");
+    });
+
+    const threshold = document.getElementById("threshold-input") as HTMLInputElement;
+    fireEvent.input(threshold, { target: { value: "8" } });
+    fireEvent.change(threshold, { target: { value: "8" } });
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.rematchFastPass).toHaveBeenCalledWith("C:\\fixtures", 8);
+      expect(document.getElementById("status-line")?.textContent).toContain("Threshold applied from cache");
+    });
+  });
+
+  it("force refreshes the cache with a fast pass option", async () => {
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("refresh-cache-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.startFastPass).toHaveBeenCalledWith(
+        "C:\\fixtures",
+        expect.any(Number),
+        { forceRefreshCache: true }
+      );
+      expect(document.getElementById("activity-list")?.textContent).toContain("Cache refresh started");
+    });
+  });
+
+  it("clears the selected folder cache", async () => {
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    await import("../../src/renderer/app");
+    (document.getElementById("folder-input") as HTMLInputElement).value = "C:\\fixtures";
+    fireEvent.click(document.getElementById("clear-cache-button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(window.imageDedupApi.clearCache).toHaveBeenCalledWith("C:\\fixtures");
+      expect(document.getElementById("status-line")?.textContent).toContain("Hash cache cleared");
     });
   });
 

@@ -16,6 +16,7 @@ export interface DetectionResult {
   elapsedMs: number;
   groups: DuplicateGroup[];
   warnings: string[];
+  cacheStats?: ScanCacheStats;
 }
 
 export interface ImageRecord {
@@ -27,6 +28,27 @@ export interface FolderPreview {
   folder: string;
   imageCount: number;
   samplePaths: string[];
+}
+
+export interface ScanCacheStats {
+  hits: number;
+  misses: number;
+  stale: number;
+  writes: number;
+  errors: number;
+}
+
+export interface HashCacheInfo {
+  folder: string;
+  cacheFilePath: string;
+  ttlDays: number;
+  totalEntries: number;
+  currentImageCount: number;
+  validEntryCount: number;
+  missingEntryCount: number;
+  staleEntryCount: number;
+  sizeBytes: number;
+  updatedAt?: string;
 }
 
 export interface ScanProgress {

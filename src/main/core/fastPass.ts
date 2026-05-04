@@ -127,6 +127,10 @@ export interface HashProvider {
   getHashes(filePath: string): Promise<string[]>;
 }
 
+export interface HashedImageRecord extends ImageRecord {
+  hashes: string[];
+}
+
 function rotateSquareGrayscale(
   pixels: Uint8Array,
   rotation: typeof ROTATIONS[number]
@@ -322,6 +326,40 @@ export async function runFastPass(
     scannedFileCount: allFiles.length,
     warnings: []
   };
+}
+
+export function buildDuplicateGroupsFromHashes(
+  records: HashedImageRecord[],
+  hammingThreshold = HAMMING_THRESHOLD
+): DuplicateGroup[] {
+  const effectiveThreshold = resolveHammingThreshold(hammingThreshold);
+  const unionFind = new UnionFind();
+  const mihIndex = new MIHIndex();
+  const firstHashByFile = new Map<string, string>();
+
+  for (const record of records) {
+    unionFind.add(record.path);
+    firstHashByFile.set(record.path, record.hashes[0] ?? "unknown");
+  }
+
+  for (const record of records) {
+    const matchedRoots = [...new Set(
+      record.hashes
+        .flatMap((hash) => mihIndex.query(hash, effectiveThreshold))
+        .map((match) => unionFind.find(match.filePath))
+    )];
+
+    let groupSeed = record.path;
+    for (const matchedRoot of matchedRoots) {
+      groupSeed = unionFind.union(groupSeed, matchedRoot);
+    }
+
+    for (const hash of record.hashes) {
+      mihIndex.insert(hash, record.path);
+    }
+  }
+
+  return buildGroups(records, firstHashByFile, unionFind);
 }
 
 function buildGroups(

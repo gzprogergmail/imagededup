@@ -63,6 +63,14 @@
             <p class="field-help threshold-field-help">
               Lower catches only very close matches (fewer false positives). Higher catches more variants like crops and re-saves (more recall).
             </p>
+            <div class="cache-controls">
+              <button id="apply-threshold-button" type="button" class="btn-secondary">Apply Threshold</button>
+              <button id="refresh-cache-button" type="button" class="btn-secondary">Force Update Cache</button>
+              <button id="clear-cache-button" type="button" class="btn-secondary btn-cache-danger">Clear Cache</button>
+            </div>
+            <p class="field-help cache-status" id="cache-status-line">
+              Cache is ready after a folder is scanned.
+            </p>
           </div>
           <p class="selection-preview" data-visible="false" id="selected-folder"></p>
           <section class="folder-preview" data-state="empty" id="folder-preview"></section>

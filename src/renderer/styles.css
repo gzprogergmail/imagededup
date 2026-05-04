@@ -867,6 +867,31 @@ wa-callout.status::part(base) {
   margin-top: 6px;
 }
 
+.cache-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.cache-controls button {
+  min-width: 150px;
+  padding: 9px 14px;
+}
+
+.btn-cache-danger {
+  color: var(--danger);
+}
+
+.btn-cache-danger:hover:enabled {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.cache-status {
+  overflow-wrap: anywhere;
+}
+
 /* ── Group header and stats ──────────────────────────────────────────────── */
 
 .group-header {

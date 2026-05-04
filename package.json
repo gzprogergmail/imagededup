@@ -142,6 +142,7 @@
     "@awesome.me/webawesome": "^3.5.0",
     "electron": "^41.3.0",
     "fast-glob": "^3.3.3",
+    "flat-cache": "^6.1.22",
     "imghash": "^1.1.0",
     "photoswipe": "^5.4.4",
     "sharp": "^0.34.4",

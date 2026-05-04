@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import { discoverImages } from "../../src/main/core/imageDiscovery";
-import { dctHash, runFastPass, HAMMING_THRESHOLD, type HashProvider } from "../../src/main/core/fastPass";
+import {
+  buildDuplicateGroupsFromHashes,
+  dctHash,
+  runFastPass,
+  HAMMING_THRESHOLD,
+  type HashProvider
+} from "../../src/main/core/fastPass";
 import { hammingDistance } from "../../src/main/core/bkTree";
 import type { DuplicateGroup } from "../../src/shared/types";
 
@@ -332,5 +338,22 @@ describe("runFastPass", () => {
     expect(groupFiles).toContain("/img/a.png");
     expect(groupFiles).toContain("/img/b.png");
     expect(groupFiles).toContain("/img/c.png");
+  });
+
+  it("rebuilds duplicate groups from existing hashes when the threshold changes", () => {
+    const records = [
+      { path: "/img/base.png", basename: "base.png", hashes: ["0000000000000000"] },
+      { path: "/img/near.png", basename: "near.png", hashes: ["000000000000001f"] },
+      { path: "/img/far.png", basename: "far.png", hashes: ["00000000000007ff"] }
+    ];
+
+    const strictGroups = buildDuplicateGroupsFromHashes(records, 4);
+    expect(strictGroups).toHaveLength(0);
+
+    const relaxedGroups = buildDuplicateGroupsFromHashes(records, 5);
+    expect(relaxedGroups).toHaveLength(1);
+    expect(relaxedGroups[0]!.files).toContain("/img/base.png");
+    expect(relaxedGroups[0]!.files).toContain("/img/near.png");
+    expect(relaxedGroups[0]!.files).not.toContain("/img/far.png");
   });
 });

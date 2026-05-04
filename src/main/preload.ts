@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { FolderPreview, ScanUpdate } from "../shared/types";
+import type { HashCacheInfo, FolderPreview, ScanUpdate } from "../shared/types";
 
 contextBridge.exposeInMainWorld("imageDedupApi", {
   browseFolder: () => ipcRenderer.invoke("folder:browse") as Promise<string | null>,
   cancelScan: () => ipcRenderer.invoke("scan:cancel") as Promise<void>,
+  clearCache: (folder: string) => ipcRenderer.invoke("cache:clear", folder) as Promise<HashCacheInfo>,
   getFolderPreview: (folder: string) => ipcRenderer.invoke("folder:preview", folder) as Promise<FolderPreview>,
+  getCacheInfo: (folder: string) => ipcRenderer.invoke("cache:info", folder) as Promise<HashCacheInfo>,
   getLogInfo: () => ipcRenderer.invoke("logs:info") as Promise<{ directory: string }>,
   logEvent: (event: string, details?: Record<string, unknown>, level?: "info" | "warn" | "error") =>
     ipcRenderer.invoke("log:write", event, details, level) as Promise<void>,
@@ -16,5 +18,7 @@ contextBridge.exposeInMainWorld("imageDedupApi", {
   openFile: (filePath: string) => ipcRenderer.invoke("file:open", filePath) as Promise<void>,
   openFolder: (filePath: string) => ipcRenderer.invoke("folder:open", filePath) as Promise<void>,
   deleteFile: (filePath: string) => ipcRenderer.invoke("file:delete", filePath) as Promise<void>,
-  startFastPass: (folder: string, threshold?: number) => ipcRenderer.invoke("scan:fast", folder, threshold)
+  rematchFastPass: (folder: string, threshold?: number) => ipcRenderer.invoke("scan:rematch", folder, threshold),
+  startFastPass: (folder: string, threshold?: number, options?: { forceRefreshCache?: boolean }) =>
+    ipcRenderer.invoke("scan:fast", folder, threshold, options)
 });

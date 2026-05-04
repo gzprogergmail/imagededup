@@ -20,6 +20,28 @@ test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
         (window as Window & { imageDedupApi: unknown }).imageDedupApi = {
           browseFolder: async () => "",
           cancelScan: async () => undefined,
+          clearCache: async (folder: string) => ({
+            cacheFilePath: "C:\\cache\\folder",
+            currentImageCount: 2,
+            folder,
+            missingEntryCount: 2,
+            sizeBytes: 0,
+            staleEntryCount: 0,
+            totalEntries: 0,
+            ttlDays: 365,
+            validEntryCount: 0
+          }),
+          getCacheInfo: async (folder: string) => ({
+            cacheFilePath: "C:\\cache\\folder",
+            currentImageCount: 2,
+            folder,
+            missingEntryCount: 2,
+            sizeBytes: 0,
+            staleEntryCount: 0,
+            totalEntries: 0,
+            ttlDays: 365,
+            validEntryCount: 0
+          }),
           getFolderPreview: async (folder: string) => ({
             folder,
             imageCount: 2,
@@ -31,6 +53,7 @@ test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
           openFile: async () => undefined,
           openFolder: async () => undefined,
           deleteFile: async () => undefined,
+          rematchFastPass: async () => nextFastResult,
           startFastPass: async () => nextFastResult
         };
       },
@@ -68,6 +91,28 @@ test("partial results appear during scan before final results arrive", async ({ 
         (window as Window & { imageDedupApi: unknown }).imageDedupApi = {
           browseFolder: async () => "",
           cancelScan: async () => undefined,
+          clearCache: async (folder: string) => ({
+            cacheFilePath: "C:\\cache\\folder",
+            currentImageCount: 2,
+            folder,
+            missingEntryCount: 2,
+            sizeBytes: 0,
+            staleEntryCount: 0,
+            totalEntries: 0,
+            ttlDays: 365,
+            validEntryCount: 0
+          }),
+          getCacheInfo: async (folder: string) => ({
+            cacheFilePath: "C:\\cache\\folder",
+            currentImageCount: 2,
+            folder,
+            missingEntryCount: 2,
+            sizeBytes: 0,
+            staleEntryCount: 0,
+            totalEntries: 0,
+            ttlDays: 365,
+            validEntryCount: 0
+          }),
           getFolderPreview: async (folder: string) => ({
             folder,
             imageCount: 2,
@@ -82,6 +127,7 @@ test("partial results appear during scan before final results arrive", async ({ 
           openFile: async () => undefined,
           openFolder: async () => undefined,
           deleteFile: async () => undefined,
+          rematchFastPass: async () => nextFastResult,
           startFastPass: async () => {
             if (scanCallback) {
               const result = nextFastResult as { groups: unknown[]; scannedFileCount: number };
