@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * End-to-end walkthrough screenshot script.
  *
