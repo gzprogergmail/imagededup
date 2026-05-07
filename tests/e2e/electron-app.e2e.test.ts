@@ -33,7 +33,7 @@ test("electron app loads the built renderer and responds to scan actions", async
 
     await window.locator("#folder-input").fill(fixtureDir);
     await window.locator("#fast-button").click();
-    await expect(window.locator("#status-line")).toContainText("Fast Pass finished", {
+    await expect(window.locator("#status-line")).toContainText("Scan finished", {
       timeout: 30000
     });
     await expect(window.locator("#results-panel")).toContainText("base.png");

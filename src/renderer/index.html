@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ImageDedup</title>
+    <title>Duplicate Image Finder</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -11,9 +11,9 @@
       <section class="hero hero-panel">
         <div>
           <p class="eyebrow">Local Duplicate Detection</p>
-          <h1>ImageDedup</h1>
+          <h1>Duplicate Image Finder</h1>
           <p class="lede">
-            Fast Pass quickly catches exact duplicates and hash-matched copies.
+            Find exact duplicates and near-matches across your local image library using perceptual hashing.
           </p>
         </div>
         <div class="hero-meta">
@@ -41,7 +41,7 @@
             />
           </label>
           <p class="field-help" id="folder-help">
-            Start Fast Pass to sweep the folder for duplicate images.
+            Choose a folder and start a scan to detect duplicate images.
           </p>
           <div class="threshold-row">
             <label class="field threshold-label">
@@ -76,7 +76,7 @@
           <section class="folder-preview" data-state="empty" id="folder-preview"></section>
           <div class="actions">
             <button id="browse-button" type="button" class="btn-secondary">Browse</button>
-            <button id="fast-button" type="button" class="btn-primary">Start Fast Pass</button>
+            <button id="fast-button" type="button" class="btn-primary">Start Scan</button>
             <button id="cancel-button" type="button" class="btn-danger" data-visible="false" disabled>Cancel Scan</button>
           </div>
           <div class="progress-wrap">
@@ -88,7 +88,7 @@
             <wa-progress-bar class="progress-bar" id="progress-bar" data-visible="false"></wa-progress-bar>
           </div>
           <wa-callout class="status status-idle" id="status-line" variant="neutral">
-            Pick a folder and start a pass.
+            Pick a folder and start a scan.
           </wa-callout>
         </wa-card>
 

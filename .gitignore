@@ -12,3 +12,4 @@ run.log
 test-results
 tests/.generated
 *.png
+!manual-ui-artifacts/walkthrough/*.png

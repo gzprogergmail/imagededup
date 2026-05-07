@@ -232,12 +232,12 @@ function updateProgressUI(progress: ScanProgress): void {
   if (progress.currentPath) {
     const fileName = progress.currentPath.split(/[/\\]/).pop() || progress.currentPath;
     updateStatus(
-      `Fast Pass: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"}) - ${shortenMiddle(fileName, 40)}`,
+      `Scanning: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"}) - ${shortenMiddle(fileName, 40)}`,
       "running"
     );
   } else {
     updateStatus(
-      `Fast Pass: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"})`,
+      `Scanning: ${labelForPhase(progress.phase)} ${percent}% (${progress.currentFile}/${progress.totalFiles} ${progress.phase === "comparing" ? "comparisons" : "images"})`,
       "running"
     );
   }
@@ -282,11 +282,11 @@ function handleScanComplete(result: DetectionResult): void {
   renderSummary(result);
   renderResults(result);
   updateStatus(
-    `Fast Pass finished in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
+    `Scan finished in ${result.elapsedMs} ms across ${result.scannedFileCount} images.`,
     result.warnings.length === 0 ? "success" : "warning"
   );
   recordActivity(
-    `Fast Pass finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
+    `Scan finished with ${result.groups.length} groups across ${result.scannedFileCount} images.`
   );
   void logUiEvent("scan.completed", {
     elapsedMs: result.elapsedMs,
@@ -311,8 +311,8 @@ function handleScanError(message: string): void {
 
   summaryGrid.innerHTML = renderSummaryEmptyMarkup();
   resultsPanel.innerHTML = renderErrorMarkup(message);
-  updateStatus(`Fast Pass failed: ${message}`, "error");
-  recordActivity(`Fast Pass failed: ${message}`);
+  updateStatus(`Scan failed: ${message}`, "error");
+  recordActivity(`Scan failed: ${message}`);
   void logUiEvent("scan.failed", { error: message, mode: "fast" }, "error");
 
   setBusy(false);
@@ -327,7 +327,7 @@ function handleScanCancelled(): void {
     unsubscribeScanUpdates = null;
   }
 
-  updateStatus("Fast Pass cancelled.", "warning");
+  updateStatus("Scan cancelled.", "warning");
   setBusy(false);
 }
 
@@ -337,7 +337,7 @@ async function runPass(options: { forceRefreshCache?: boolean } = {}): Promise<v
     folderInput.setAttribute("aria-invalid", "true");
     folderInput.focus();
     updateStatus("Enter a folder path first.", "error");
-    recordActivity("Fast Pass blocked because no folder was provided.");
+    recordActivity("Blocked: no folder path provided.");
     void logUiEvent("scan.blocked.empty_folder", { mode: "fast" }, "warn");
     return;
   }
@@ -358,11 +358,11 @@ async function runPass(options: { forceRefreshCache?: boolean } = {}): Promise<v
   renderPendingScanState(folder);
   scanStartTime = Date.now();
   setBusy(true);
-  updateStatus(options.forceRefreshCache ? "Fast Pass is refreshing the hash cache..." : "Fast Pass is starting...", "running");
+  updateStatus(options.forceRefreshCache ? "Refreshing the hash cache..." : "Scan is starting...", "running");
   recordActivity(
     options.forceRefreshCache
       ? `Cache refresh started for ${shortenMiddle(folder, 60)}.`
-      : `Fast Pass started for ${shortenMiddle(folder, 60)}.`
+      : `Scan started for ${shortenMiddle(folder, 60)}.`
   );
   void logUiEvent("scan.started", { folder, forceRefreshCache: options.forceRefreshCache === true, mode: "fast" });
 
@@ -433,7 +433,7 @@ async function rematchFromCache(source: "auto" | "manual"): Promise<void> {
 }
 
 function renderSummary(result: DetectionResult): void {
-  summaryGrid.innerHTML = renderSummaryMarkup(result, "Fast Pass", Number(thresholdInput.value));
+  summaryGrid.innerHTML = renderSummaryMarkup(result, "Scan", Number(thresholdInput.value));
 }
 
 function renderResults(result: DetectionResult): void {
@@ -449,8 +449,8 @@ function renderPartialResults(
 }
 
 function renderPendingScanState(folder: string): void {
-  summaryGrid.innerHTML = renderSummaryLoadingMarkup("Fast Pass");
-  resultsPanel.innerHTML = renderResultsLoadingMarkup("Fast Pass", folder);
+  summaryGrid.innerHTML = renderSummaryLoadingMarkup("Scan");
+  resultsPanel.innerHTML = renderResultsLoadingMarkup("Scan", folder);
 }
 
 async function requestCancelScan(): Promise<void> {
@@ -491,9 +491,9 @@ function setBusy(busy: boolean): void {
   updateCacheControls();
 
   if (busy) {
-    fastButton.textContent = "Fast Pass Running";
+    fastButton.textContent = "Scanning...";
   } else {
-    fastButton.textContent = "Start Fast Pass";
+    fastButton.textContent = "Start Scan";
     // Reset progress display
     progressPercent.textContent = "0%";
     progressText.textContent = "";

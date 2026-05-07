@@ -65,7 +65,7 @@ describe("renderer app", () => {
         <div id="cache-status-line"></div>
         <div id="phase-stepper" data-visible="false"></div>
         <button id="browse-button">Browse</button>
-        <button id="fast-button">Start Fast Pass</button>
+        <button id="fast-button">Start Scan</button>
         <button id="cancel-button">Cancel</button>
         <div id="activity-count"></div>
         <ol id="activity-list"></ol>
@@ -148,7 +148,7 @@ describe("renderer app", () => {
       expect(document.getElementById("results-panel")?.textContent).toContain("Review duplicate groups");
       expect(document.getElementById("results-panel")?.textContent).toContain("copy.png");
       expect(document.getElementById("status-badge")?.textContent).toContain("Ready");
-      expect(document.getElementById("activity-list")?.textContent).toContain("Fast Pass finished");
+      expect(document.getElementById("activity-list")?.textContent).toContain("Scan finished");
     });
   });
 
@@ -210,7 +210,7 @@ describe("renderer app", () => {
     fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass finished");
+      expect(document.getElementById("status-line")?.textContent).toContain("Scan finished");
     });
 
     const threshold = document.getElementById("threshold-input") as HTMLInputElement;
@@ -269,7 +269,7 @@ describe("renderer app", () => {
     fireEvent.click(document.getElementById("fast-button") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass failed: Boom");
+      expect(document.getElementById("status-line")?.textContent).toContain("Scan failed: Boom");
       expect(document.getElementById("results-panel")?.textContent).toContain("Pass failed");
     });
   });
@@ -338,7 +338,7 @@ describe("renderer app", () => {
     });
 
     await waitFor(() => {
-      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass: comparing matches 39%");
+      expect(document.getElementById("status-line")?.textContent).toContain("Scanning: comparing matches 39%");
       expect(document.getElementById("progress-text")?.textContent).toContain("75/190 comparisons");
       expect(document.getElementById("progress-text")?.textContent).toContain("~2m remaining");
       expect(document.getElementById("progress-percent")?.textContent).toBe("39%");
@@ -366,7 +366,7 @@ describe("renderer app", () => {
     listeners[0]?.({ type: "complete", result: fastResult });
 
     await waitFor(() => {
-      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass finished");
+      expect(document.getElementById("status-line")?.textContent).toContain("Scan finished");
       expect(document.getElementById("status-badge")?.textContent).toContain("Ready");
       expect(document.getElementById("cancel-button")?.getAttribute("data-visible")).toBe("false");
       expect(unsubscribe).toHaveBeenCalled();
@@ -391,7 +391,7 @@ describe("renderer app", () => {
 
     await waitFor(() => {
       expect(window.imageDedupApi.cancelScan).toHaveBeenCalled();
-      expect(document.getElementById("status-line")?.textContent).toContain("Fast Pass cancelled.");
+      expect(document.getElementById("status-line")?.textContent).toContain("Scan cancelled.");
       expect(document.getElementById("status-badge")?.textContent).toContain("Attention");
       expect(document.getElementById("cancel-button")?.getAttribute("data-visible")).toBe("false");
     });

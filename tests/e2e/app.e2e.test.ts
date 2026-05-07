@@ -66,9 +66,9 @@ test("fast pass runs end-to-end in the built renderer", async ({ page }) => {
     await page.getByLabel("Folder").fill(fixtureDir);
     await expect(page.locator("#folder-preview")).toContainText("images ready to scan");
     await page.getByLabel("Folder").press("Enter");
-    await expect(page.locator("#status-line")).toContainText("Fast Pass finished");
+    await expect(page.locator("#status-line")).toContainText("Scan finished");
     await expect(page.getByText("base.png").first()).toBeVisible();
-    await expect(page.getByText(/Fast Pass finished with/)).toBeVisible();
+    await expect(page.getByText(/Scan finished with/)).toBeVisible();
     await expect(page.getByText("Review duplicate groups")).toBeVisible();
   } finally {
     await stop();
@@ -157,8 +157,8 @@ test("partial results appear during scan before final results arrive", async ({ 
     await expect(page.locator("#results-panel")).toContainText("Live results");
 
     // Final results should replace the partial banner
-    await expect(page.locator("#status-line")).toContainText("Fast Pass finished");
-    await expect(page.getByText(/Fast Pass finished with/)).toBeVisible();
+    await expect(page.locator("#status-line")).toContainText("Scan finished");
+    await expect(page.getByText(/Scan finished with/)).toBeVisible();
   } finally {
     await stop();
   }
