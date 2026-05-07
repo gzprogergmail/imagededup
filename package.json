@@ -139,7 +139,7 @@
     "wait-on": "^9.0.5"
   },
   "dependencies": {
-    "@awesome.me/webawesome": "^3.5.0",
+    "@awesome.me/webawesome": "^3.6.0",
     "electron": "^41.3.0",
     "fast-glob": "^3.3.3",
     "flat-cache": "^6.1.22",
