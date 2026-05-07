@@ -2,6 +2,61 @@
 
 ImageDedup is a local Electron desktop app for finding duplicate and near-duplicate images in a folder. All processing happens on-device — no files leave your machine.
 
+## Walkthrough
+
+### 1. Pick a folder
+
+Point the app at any folder. A live preview thumbnails a sample of images and shows the total count. The Hamming threshold slider — **Precise → Sensitive** — controls how similar two images must be to count as duplicates.
+
+![Folder selected with thumbnail preview and 244 images ready to scan](manual-ui-artifacts/walkthrough/02-folder-selected.png)
+
+### 2. Start the scan
+
+Click **Start Scan**. Hashing, rotation detection, and near-duplicate matching run in a streaming pipeline — partial results appear while the scan is still in flight.
+
+![Scan running with progress bar visible](manual-ui-artifacts/walkthrough/04-scan-in-progress.png)
+
+### 3. Review the summary
+
+When the scan finishes a stat grid shows images scanned, elapsed time, throughput, duplicate groups found, files that could be removed, and the current threshold.
+
+![Summary stats at threshold 0 — 113 duplicate groups in 911 ms across 244 images](manual-ui-artifacts/walkthrough/05-results-threshold-0.png)
+
+### 4. Inspect duplicate groups
+
+Each group shows side-by-side thumbnails, the shared perceptual hash, file names, and per-file actions (**Open**, **Show in Folder**, **Copy Path**). Groups are sorted largest-first.
+
+![Duplicate group cards with thumbnails and per-file actions](manual-ui-artifacts/walkthrough/06c-results-threshold-5-scrolled.png)
+
+### 5. Tune the Hamming threshold
+
+The threshold slider changes how aggressively near-matches are detected — no re-scan needed after the first run because hashes are cached. Click **Apply Threshold** to re-match instantly from the cached hashes.
+
+| Threshold | What it catches | Typical use |
+|---|---|---|
+| **0** | Pixel-identical files only | Finding exact copies |
+| **5** *(default)* | Resized or lightly re-compressed versions | General cleanup |
+| **10** | Crops, brightness edits, JPEG re-saves | Aggressive deduplication |
+| **16** | Very loose perceptual similarity | Maximum recall, more false positives |
+
+**Threshold 0 — exact duplicates only (113 groups):**
+
+![Results at threshold 0](manual-ui-artifacts/walkthrough/05b-results-threshold-0-scrolled.png)
+
+**Threshold 5 — near-duplicates included (default):**
+
+![Results at threshold 5](manual-ui-artifacts/walkthrough/06b-results-threshold-5.png)
+
+**Threshold 10 — crops and re-saves caught:**
+
+![Results at threshold 10](manual-ui-artifacts/walkthrough/07b-results-threshold-10.png)
+
+**Threshold 16 — maximum sensitivity (38 groups, 244 grouped files, 100% duplicate rate):**
+
+![Summary at threshold 16 — 38 groups, 206 potentially removable, 100% duplicate rate](manual-ui-artifacts/walkthrough/09-summary-threshold-16.png)
+
+---
+
 ## How It Works
 
 ### 1. Image Discovery
