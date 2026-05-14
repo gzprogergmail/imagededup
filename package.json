@@ -140,7 +140,7 @@
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.5.0",
-    "electron": "^41.3.0",
+    "electron": "^42.0.1",
     "fast-glob": "^3.3.3",
     "flat-cache": "^6.1.22",
     "imghash": "^1.1.4",
